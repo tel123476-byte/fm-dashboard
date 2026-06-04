@@ -207,12 +207,20 @@ tr:hover td{background:#f9fbfc}
           <option value="1">Únor 2026</option>
           <option value="2">Březen 2026</option>
         </select>
+        <select id="al-status" class="finp" onchange="renderAlarmy()" style="font-size:11px;padding:4px 8px">
+          <option value="all">Všechny stavy</option>
+          <option value="new">🔴 Pouze nové</option>
+          <option value="investigating">🟡 Pouze v řešení</option>
+          <option value="monitoring">🔵 Pouze sledované</option>
+          <option value="resolved">🟢 Pouze vyřízené</option>
+          <option value="open">Skrýt vyřízené</option>
+        </select>
       </div>
     </div>
-    <p style="font-size:12px;color:var(--gm);margin-bottom:14px">Všechny detekované odchylky napříč objekty seřazené podle závažnosti. Kliknutím na řádek otevřete detail nájemce.</p>
+    <p style="font-size:12px;color:var(--gm);margin-bottom:14px">Všechny detekované odchylky napříč objekty seřazené podle závažnosti. Kliknutím na řádek otevřete detail nájemce, kliknutím na 📝 přidáte komentář a změníte stav.</p>
     <div class="metrics" style="margin-bottom:14px" id="al-metrics"></div>
     <div class="tw"><table>
-      <thead><tr><th>Závažnost</th><th>Objekt</th><th>Nájemce</th><th>Médium</th><th>Měsíc</th><th>2025</th><th>2026</th><th>Δ %</th><th>Směr</th></tr></thead>
+      <thead><tr><th>Závažnost</th><th>Stav</th><th>Objekt</th><th>Nájemce</th><th>Médium</th><th>Měsíc</th><th>2025</th><th>2026</th><th>Δ %</th><th>Směr</th><th>Komentář</th></tr></thead>
       <tbody id="al-tbl"></tbody>
     </table></div>
     <div id="al-legend"></div>
@@ -579,9 +587,11 @@ async function loadObjectsFromFirestore(){
       OBJ.length=0;
       cloudObjs.forEach(o=>OBJ.push(o));
       setSyncStatus('synced');
-      // Re-render aktivní sekce
-      reRenderActive();
     }
+    // Načti alarm notes (vždy, i po seedu)
+    await loadAlarmNotesFromFirestore();
+    // Re-render aktivní sekce
+    reRenderActive();
   }catch(e){
     console.error('Load failed:',e);
     setSyncStatus('error');
@@ -636,6 +646,66 @@ function reRenderActive(){
     else if(document.getElementById('s-srovnani')&&document.getElementById('s-srovnani').classList.contains('active')&&typeof renderSr==='function')renderSr();
     else if(document.getElementById('s-alarmy')&&document.getElementById('s-alarmy').classList.contains('active')&&typeof renderAlarmy==='function')renderAlarmy();
   }catch(e){console.warn('Re-render skipped:',e);}
+}
+
+// === Alarm notes (komentáře k alarmům) ===
+// Schema: alarm_notes/{noteId} kde noteId = objectId_medium_month (stabilní napříč spuštěními)
+// Fields: status ('new'|'investigating'|'monitoring'|'resolved'), comment, updatedBy, updatedAt
+window.ALARM_NOTES={}; // cache: noteId -> {status, comment, updatedBy, updatedAt}
+
+function alarmNoteId(objIdx,medium,month){
+  var o=OBJ[objIdx];
+  if(!o)return null;
+  return o.id+'_'+medium+'_'+month;
+}
+function alarmNoteIdFromAlarm(a){
+  return alarmNoteId(a.objIdx,a.medium,a.month);
+}
+
+async function loadAlarmNotesFromFirestore(){
+  try{
+    const snap=await fbDB.collection('alarm_notes').get();
+    window.ALARM_NOTES={};
+    snap.forEach(doc=>{window.ALARM_NOTES[doc.id]=doc.data();});
+  }catch(e){
+    console.error('Load alarm notes failed:',e);
+  }
+}
+
+async function saveAlarmNote(noteId,data){
+  setSyncStatus('saving');
+  try{
+    const payload={
+      status:data.status||'new',
+      comment:data.comment||'',
+      updatedBy:fbAuth.currentUser?fbAuth.currentUser.email:'unknown',
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    };
+    await fbDB.collection('alarm_notes').doc(noteId).set(payload);
+    // Cache hned (ne server timestamp - placeholder)
+    window.ALARM_NOTES[noteId]={...payload,updatedAt:new Date()};
+    setSyncStatus('synced');
+    return true;
+  }catch(e){
+    console.error('Save alarm note failed:',e);
+    setSyncStatus('error');
+    alert('Komentář se neuložil. Zkontrolujte připojení.');
+    return false;
+  }
+}
+
+async function deleteAlarmNote(noteId){
+  setSyncStatus('saving');
+  try{
+    await fbDB.collection('alarm_notes').doc(noteId).delete();
+    delete window.ALARM_NOTES[noteId];
+    setSyncStatus('synced');
+    return true;
+  }catch(e){
+    console.error('Delete alarm note failed:',e);
+    setSyncStatus('error');
+    return false;
+  }
 }
 
 const OBJ=[
@@ -1727,6 +1797,7 @@ function renderAlarmy(){
   var sevFilter=document.getElementById('al-severity').value;
   var dirFilter=document.getElementById('al-direction').value;
   var perFilter=document.getElementById('al-period').value;
+  var statusFilter=document.getElementById('al-status')?document.getElementById('al-status').value:'all';
 
   var filtered=allAlarms.filter(function(a){
     if(sevFilter==='fail'&&a.severity!=='fail')return false;
@@ -1734,6 +1805,14 @@ function renderAlarmy(){
     if(dirFilter==='up'&&a.direction!=='up')return false;
     if(dirFilter==='down'&&a.direction!=='down')return false;
     if(perFilter!=='all'&&a.month!==parseInt(perFilter))return false;
+    // Status filter
+    if(statusFilter!=='all'){
+      var nid=alarmNoteIdFromAlarm(a);
+      var note=window.ALARM_NOTES&&window.ALARM_NOTES[nid];
+      var st=note?note.status:'new';
+      if(statusFilter==='open'&&st==='resolved')return false;
+      else if(statusFilter!=='open'&&st!==statusFilter)return false;
+    }
     return true;
   });
 
@@ -1745,22 +1824,47 @@ function renderAlarmy(){
   filtered.forEach(function(a){affectedObj[a.objName]=true;});
   var affectedCount=Object.keys(affectedObj).length;
 
+  // Status counts (přes všechny alarmy ne filtrované, abychom viděli globální obraz)
+  var sNew=0,sInv=0,sMon=0,sRes=0;
+  allAlarms.forEach(function(a){
+    var nid=alarmNoteIdFromAlarm(a);
+    var note=window.ALARM_NOTES&&window.ALARM_NOTES[nid];
+    var st=note?note.status:'new';
+    if(st==='resolved')sRes++;
+    else if(st==='investigating')sInv++;
+    else if(st==='monitoring')sMon++;
+    else sNew++;
+  });
+
   document.getElementById('al-metrics').innerHTML=
     '<div class="mc" style="border-left-color:#c0392b"><div class="mc-val at" style="color:#c0392b">'+failCount+'</div><div class="mc-label">FAIL alarmů</div><div class="mc-sub">odchylka ≥ 50%</div></div>'+
     '<div class="mc amber"><div class="mc-val at">'+warnCount+'</div><div class="mc-label">POZOR alarmů</div><div class="mc-sub">odchylka 20-50%</div></div>'+
     '<div class="mc blue"><div class="mc-val">'+affectedCount+'/'+OBJ.length+'</div><div class="mc-label">Postižených objektů</div><div class="mc-sub">napříč portfoliem</div></div>'+
-    '<div class="mc gray"><div class="mc-val">'+upCount+' / '+downCount+'</div><div class="mc-label">Nárůst / Pokles</div><div class="mc-sub">'+(upCount>downCount?'převažuje nárůst':downCount>upCount?'převažuje pokles':'rovnoměrně')+'</div></div>';
+    '<div class="mc"><div class="mc-val" style="font-size:14px;line-height:1.4"><span style="color:#c0392b">●</span> '+sNew+' nové<br><span style="color:#e6a817">●</span> '+sInv+' řeší se<br><span style="color:#3498db">●</span> '+sMon+' sleduje se<br><span style="color:#2ecc71">●</span> '+sRes+' vyřízeno</div><div class="mc-label">Workflow alarmů</div><div class="mc-sub">stav v portfoliu</div></div>';
 
   if(filtered.length===0){
-    document.getElementById('al-tbl').innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--gl)"><div style="font-size:32px;margin-bottom:8px">✓</div><div>Žádné alarmy v tomto filtru. Spotřeby jsou v normě.</div></td></tr>';
+    document.getElementById('al-tbl').innerHTML='<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--gl)"><div style="font-size:32px;margin-bottom:8px">✓</div><div>Žádné alarmy v tomto filtru.</div></td></tr>';
   } else {
     window._currentAlarms=filtered;
+    var stColors={new:'#c0392b',investigating:'#e6a817',monitoring:'#3498db',resolved:'#2ecc71'};
+    var stLabels={new:'Nový',investigating:'Řeší se',monitoring:'Sleduje',resolved:'Vyřízeno'};
     document.getElementById('al-tbl').innerHTML=filtered.map(function(a,idx){
       var sevBadge=a.severity==='fail'?'<span class="badge b-err">FAIL</span>':'<span class="badge b-warn">POZOR</span>';
       var dirIcon=a.direction==='up'?'<span style="color:var(--red);font-weight:700">↑ Nárůst</span>':'<span style="color:var(--green);font-weight:700">↓ Pokles</span>';
       var pctBadge='<span style="font-weight:700;color:'+(a.severity==='fail'?'var(--red)':'var(--am)')+'">'+(a.pct>0?'+':'')+a.pct+'%</span>';
+      var nid=alarmNoteIdFromAlarm(a);
+      var note=window.ALARM_NOTES&&window.ALARM_NOTES[nid];
+      var st=note?note.status:'new';
+      var stBadge='<span style="display:inline-flex;align-items:center;gap:5px;background:'+stColors[st]+'15;color:'+stColors[st]+';padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;border:1px solid '+stColors[st]+'40">●&nbsp;'+stLabels[st]+'</span>';
+      var commentPreview='';
+      if(note&&note.comment){
+        var c=note.comment.length>40?note.comment.substring(0,40)+'...':note.comment;
+        commentPreview='<span title="'+note.comment.replace(/"/g,'&quot;')+' — '+(note.updatedBy||'')+'" style="font-size:11px;color:var(--gd)">💬 '+c+'</span> ';
+      }
+      var noteBtn='<button onclick="event.stopPropagation();openAlarmNote('+idx+')" class="btn-i" style="font-size:10px;padding:2px 7px" title="Upravit komentář a stav">📝 '+(note&&note.comment?'Upravit':'Přidat')+'</button>';
       return '<tr style="cursor:pointer" onclick="openTenantFromAlarmIdx('+idx+')">'+
         '<td>'+sevBadge+'</td>'+
+        '<td>'+stBadge+'</td>'+
         '<td class="tn">'+a.objName+'</td>'+
         '<td>'+a.tenantName+'</td>'+
         '<td><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:'+a.medColor+';margin-right:6px;vertical-align:middle"></span>'+a.medName+'</td>'+
@@ -1768,16 +1872,93 @@ function renderAlarmy(){
         '<td>'+a.v25.toLocaleString('cs-CZ')+' '+a.medUnit+'</td>'+
         '<td>'+a.v26.toLocaleString('cs-CZ')+' '+a.medUnit+'</td>'+
         '<td>'+pctBadge+'</td>'+
-        '<td>'+dirIcon+'</td></tr>';
+        '<td>'+dirIcon+'</td>'+
+        '<td>'+commentPreview+noteBtn+'</td></tr>';
     }).join('');
   }
 
   document.getElementById('al-legend').innerHTML='<div style="background:var(--gbg);border:1px solid var(--brd);border-radius:6px;padding:12px 16px;margin-top:12px;font-size:11px;color:var(--gm)">'+
-    '<div style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:var(--gd);margin-bottom:8px">▌ Jak číst alarmy</div>'+
+    '<div style="font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:10px;color:var(--gd);margin-bottom:8px">▌ Jak číst alarmy a používat workflow</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
       '<div><span class="badge b-warn">POZOR</span> <b style="color:var(--gd)">20–50 %</b><br><span style="color:var(--gm)">Změna spotřeby vs stejný měsíc loni. Vyžaduje pozornost FM – ověřit příčinu (sezónní výkyv, změna provozu, počínající závada).</span></div>'+
       '<div><span class="badge b-err">FAIL</span> <b style="color:var(--gd)">≥ 50 %</b><br><span style="color:var(--gm)">Dramatická změna. Vysoká pravděpodobnost havárie nebo závady – vyžaduje okamžitou kontrolu na místě.</span></div>'+
+    '</div>'+
+    '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--brd)"><b style="color:var(--gd);font-size:10px;text-transform:uppercase;letter-spacing:.5px">▌ Stavy alarmu</b><br>'+
+      '<span style="color:#c0392b">● Nový</span> – ještě neřešen &nbsp; · &nbsp; '+
+      '<span style="color:#e6a817">● Řeší se</span> – předáno FM, čeká odpověď &nbsp; · &nbsp; '+
+      '<span style="color:#3498db">● Sleduje se</span> – ne akutní, monitorovat dál &nbsp; · &nbsp; '+
+      '<span style="color:#2ecc71">● Vyřízeno</span> – příčina objasněna nebo opravena'+
     '</div></div>';
+}
+
+// === Alarm note modal ===
+function openAlarmNote(idx){
+  var a=window._currentAlarms[idx];
+  if(!a)return;
+  var nid=alarmNoteIdFromAlarm(a);
+  var note=window.ALARM_NOTES[nid]||{status:'new',comment:''};
+  
+  var modal=document.getElementById('modal-edit');
+  document.getElementById('modal-title').textContent='Komentář k alarmu – '+a.objName;
+  var subtitle=a.tenantName+' · '+a.medName+' · '+a.monthName+' 2026 · '+(a.pct>0?'+':'')+a.pct+'% '+(a.direction==='up'?'↑':'↓');
+  var lastInfo='';
+  if(note.updatedBy&&note.updatedAt){
+    var d=note.updatedAt;
+    if(d&&d.toDate)d=d.toDate();
+    if(d instanceof Date){
+      lastInfo='<div style="background:var(--gbg);padding:6px 10px;border-radius:4px;font-size:10px;color:var(--gm);margin-top:8px">Naposledy upraveno: <b>'+note.updatedBy+'</b> · '+d.toLocaleDateString('cs-CZ')+' '+d.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})+'</div>';
+    }
+  }
+  document.getElementById('modal-desc').innerHTML='<div style="font-size:11px;color:var(--gm);margin-bottom:8px">'+subtitle+'</div>'+lastInfo;
+  
+  var inp=document.getElementById('modal-input');
+  inp.style.display='none';
+  var customDiv=document.getElementById('modal-custom-area');
+  if(customDiv)customDiv.remove();
+  customDiv=document.createElement('div');
+  customDiv.id='modal-custom-area';
+  customDiv.style.cssText='display:grid;gap:14px;margin:10px 0';
+  customDiv.innerHTML=
+    '<div><label class="flab">Stav alarmu</label><select id="an-status" class="modal-input">'+
+      '<option value="new"'+(note.status==='new'?' selected':'')+'>🔴 Nový (defaultní)</option>'+
+      '<option value="investigating"'+(note.status==='investigating'?' selected':'')+'>🟡 Řeší se (předáno FM)</option>'+
+      '<option value="monitoring"'+(note.status==='monitoring'?' selected':'')+'>🔵 Sleduje se (ne akutní)</option>'+
+      '<option value="resolved"'+(note.status==='resolved'?' selected':'')+'>🟢 Vyřízeno</option>'+
+    '</select></div>'+
+    '<div><label class="flab">Komentář</label><textarea id="an-comment" class="modal-input" rows="4" placeholder="Např. Předáno na úklidovou firmu 4.6.2026, technik přijede 8.6. Pravděpodobně havárie na rozvodu.">'+(note.comment||'').replace(/</g,'&lt;')+'</textarea></div>';
+  inp.parentElement.insertBefore(customDiv,inp);
+  
+  // Add delete button if note exists
+  var actions=document.querySelector('#modal-edit .modal-actions');
+  var existingDel=document.getElementById('an-delete-btn');
+  if(existingDel)existingDel.remove();
+  if(note.comment||(note.status&&note.status!=='new')){
+    var delBtn=document.createElement('button');
+    delBtn.id='an-delete-btn';
+    delBtn.className='btn-o';
+    delBtn.style.cssText='color:#c0392b;border-color:#c0392b;margin-right:auto';
+    delBtn.textContent='🗑 Smazat komentář';
+    delBtn.onclick=async function(){
+      if(!confirm('Opravdu smazat komentář a vrátit stav na "Nový"?'))return;
+      await deleteAlarmNote(nid);
+      closeModal();
+      renderAlarmy();
+    };
+    actions.insertBefore(delBtn,actions.firstChild);
+  }
+  
+  modalContext={onSave:async function(){
+    var status=document.getElementById('an-status').value;
+    var comment=document.getElementById('an-comment').value.trim();
+    var ok=await saveAlarmNote(nid,{status:status,comment:comment});
+    if(ok){
+      renderAlarmy();
+      return true;
+    }
+    return false;
+  }};
+  modal.classList.add('active');
+  setTimeout(function(){document.getElementById('an-comment').focus();},50);
 }
 
 function openTenantFromAlarmIdx(idx){
