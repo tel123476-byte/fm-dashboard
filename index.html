@@ -1483,7 +1483,11 @@ function renderO(){
     '<td>'+(o.os>0?o.os:'<span style="color:var(--gl)">—</span>')+'</td>'+
     '<td style="font-size:11px;color:var(--gm)">'+o.me+'</td>'+
     '<td style="font-size:11px">'+o.pos+'</td>'+
-    '<td class="ta"><button class="btn-o" style="font-size:10px;padding:3px 8px" onclick="openDetail('+i+')">Otevřít</button></td></tr>';
+    '<td class="ta" style="white-space:nowrap">'+
+      '<button class="btn-o" style="font-size:10px;padding:3px 8px" onclick="openDetail('+i+')" title="Otevřít detail">Otevřít</button> '+
+      '<button class="btn-i" style="font-size:10px;padding:3px 7px" onclick="editObjectInfo('+i+')" title="Upravit údaje (název, adresa, FM, média)">✎ Upravit</button> '+
+      '<button class="btn-i" style="font-size:10px;padding:3px 7px;color:#c0392b;border-color:#c0392b" onclick="deleteObject('+i+')" title="Smazat objekt">🗑</button>'+
+    '</td></tr>';
   }).join('');
 }
 
@@ -2640,7 +2644,7 @@ document.getElementById('btn-submit').addEventListener('click',function(){
   },2200);
 });
 
-function saveNewObject(){
+async function saveNewObject(){
   var name=document.getElementById('no-name').value.trim();
   var fm=document.getElementById('no-fm').value.trim();
   var st=document.getElementById('novy-status');
@@ -2649,21 +2653,141 @@ function saveNewObject(){
     st.innerHTML='<div style="background:var(--rl);border:1px solid var(--red);border-radius:6px;padding:12px 16px;font-size:12px;color:var(--red)">⚠ Vyplňte: <b>Název objektu</b> a <b>FM kontakt</b>.</div>';
     return;
   }
+  // Validace duplicitního jména
+  if(OBJ.some(function(o){return o.n.toLowerCase()===name.toLowerCase();})){
+    st.style.display='block';
+    st.innerHTML='<div style="background:var(--rl);border:1px solid var(--red);border-radius:6px;padding:12px 16px;font-size:12px;color:var(--red)">⚠ Objekt s názvem <b>'+name+'</b> už existuje. Vyberte jiný název.</div>';
+    return;
+  }
   var media=[];
   if(document.getElementById('me-el').checked)media.push('El');
   if(document.getElementById('me-heat').checked)media.push('Tep');
   if(document.getElementById('me-cool').checked)media.push('Chl');
   if(document.getElementById('me-gas').checked)media.push('Plyn');
   if(document.getElementById('me-water').checked)media.push('Voda');
-  var newObj={id:name.replace(/[^A-Za-z0-9]/g,'').substr(0,4).toUpperCase()||'NEW',n:name,fm:fm,adr:document.getElementById('no-adr').value.trim()||'—',pl:parseInt(document.getElementById('no-pl').value)||0,os:parseInt(document.getElementById('no-os').value)||0,me:media.join(' · ')||'—',pos:'—',st:'wait',tenants:{el:{},heat:{},cool:{},gas:{},water:{}}};
+  // Generuj unikátní ID
+  var baseId=name.replace(/[^A-Za-z0-9]/g,'').substr(0,4).toUpperCase()||'NEW';
+  var id=baseId, suffix=2;
+  while(OBJ.some(function(o){return o.id===id;})){id=baseId+suffix;suffix++;}
+  var pl=parseInt(document.getElementById('no-pl').value)||0;
+  var newObj={
+    id:id,n:name,fm:fm,
+    adr:document.getElementById('no-adr').value.trim()||'—',
+    pl:pl,
+    os:parseInt(document.getElementById('no-os').value)||0,
+    me:media.join(' · ')||'—',
+    pos:'—',st:'wait',
+    plochy:{rental:pl,common:0}, // celá plocha jako rental defaultně, upraví se přes editArea
+    tenant_types:{},
+    tenant_areas:{},
+    tenants:{el:{},heat:{},cool:{},gas:{},water:{}}
+  };
   OBJ.push(newObj);
   st.style.display='block';
-  st.innerHTML='<div style="background:var(--glt);border:1px solid var(--green);border-radius:6px;padding:14px 16px;font-size:12px;color:var(--green)">✅ <b>Objekt vytvořen!</b><br><span style="font-size:11px;color:var(--gm);margin-top:6px;display:inline-block">Další kroky:<br>1. Vytvořte SharePoint složku /Příjem/'+name+'/<br>2. Přidělte přístup pro '+fm+'</span></div>';
-  setTimeout(function(){
-    showSec('objekty');
-    ['no-name','no-fm','no-adr','no-pl','no-os'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-    st.style.display='none';
-  },3000);
+  st.innerHTML='<div style="background:var(--glt);border:1px solid var(--green);border-radius:6px;padding:14px 16px;font-size:12px;color:var(--green)">⟳ Ukládání objektu do cloudu...</div>';
+  try{
+    await fbDB.collection('objects').doc(newObj.id).set(deepClean(newObj));
+    setSyncStatus('synced');
+    st.innerHTML='<div style="background:var(--glt);border:1px solid var(--green);border-radius:6px;padding:14px 16px;font-size:12px;color:var(--green)">✅ <b>Objekt vytvořen a uložen!</b><br><span style="font-size:11px;color:var(--gm);margin-top:6px;display:inline-block">Další kroky:<br>1. Otevřete objekt v seznamu<br>2. Upravte plochy (rental/common)<br>3. Až bude xlsx import, naimportujte spotřeby</span></div>';
+    setTimeout(function(){
+      showSec('objekty');
+      ['no-name','no-fm','no-adr','no-pl','no-os'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
+      st.style.display='none';
+    },2500);
+  }catch(e){
+    console.error('Save new object failed:',e);
+    // Rollback z lokálního OBJ
+    var rmIdx=OBJ.findIndex(function(o){return o.id===newObj.id;});
+    if(rmIdx>=0)OBJ.splice(rmIdx,1);
+    setSyncStatus('error');
+    st.innerHTML='<div style="background:var(--rl);border:1px solid var(--red);border-radius:6px;padding:12px 16px;font-size:12px;color:var(--red)">⚠ Nepodařilo se uložit do cloudu: '+e.message+'</div>';
+  }
+}
+
+// === Edit object info (name, address, FM email, media) ===
+function editObjectInfo(idx){
+  var o=OBJ[idx];
+  if(!o)return;
+  var modal=document.getElementById('modal-edit');
+  document.getElementById('modal-title').textContent='Údaje objektu – '+o.n;
+  document.getElementById('modal-desc').innerHTML='Upravte základní informace o objektu.<br><span style="font-size:10px;color:var(--gl)">ID objektu (<b>'+o.id+'</b>) nelze měnit.</span>';
+  var inp=document.getElementById('modal-input');
+  inp.style.display='none';
+  var customDiv=document.getElementById('modal-custom-area');
+  if(customDiv)customDiv.remove();
+  customDiv=document.createElement('div');
+  customDiv.id='modal-custom-area';
+  customDiv.style.cssText='display:grid;gap:12px;margin:6px 0 12px';
+  var meStr=o.me||'';
+  customDiv.innerHTML=
+    '<div><label class="flab">Název objektu *</label><input type="text" id="eo-name" class="modal-input" value="'+(o.n||'').replace(/"/g,'&quot;')+'"></div>'+
+    '<div><label class="flab">Adresa</label><input type="text" id="eo-adr" class="modal-input" value="'+(o.adr||'').replace(/"/g,'&quot;')+'"></div>'+
+    '<div><label class="flab">FM kontakt (email) *</label><input type="email" id="eo-fm" class="modal-input" value="'+(o.fm||'').replace(/"/g,'&quot;')+'"></div>'+
+    '<div><label class="flab">Aktivní média</label><div style="display:flex;gap:14px;flex-wrap:wrap;padding:6px 0;font-size:12px">'+
+      '<label class="chk"><input type="checkbox" id="eo-el"'+(meStr.indexOf('El')>=0?' checked':'')+'> Elektřina</label>'+
+      '<label class="chk"><input type="checkbox" id="eo-heat"'+(meStr.indexOf('Tep')>=0?' checked':'')+'> Teplo</label>'+
+      '<label class="chk"><input type="checkbox" id="eo-cool"'+(meStr.indexOf('Chl')>=0?' checked':'')+'> Chlazení</label>'+
+      '<label class="chk"><input type="checkbox" id="eo-gas"'+(meStr.indexOf('Plyn')>=0?' checked':'')+'> Plyn</label>'+
+      '<label class="chk"><input type="checkbox" id="eo-water"'+(meStr.indexOf('Voda')>=0?' checked':'')+'> Voda</label>'+
+    '</div></div>';
+  inp.parentElement.insertBefore(customDiv,inp);
+  modalContext={onSave:function(){
+    var name=document.getElementById('eo-name').value.trim();
+    var fm=document.getElementById('eo-fm').value.trim();
+    if(!name||!fm){alert('Vyplňte název a FM email.');return false;}
+    // Kontrola duplicit (mimo vlastní objekt)
+    if(OBJ.some(function(o2,j){return j!==idx&&o2.n.toLowerCase()===name.toLowerCase();})){
+      alert('Objekt s tímto názvem už existuje.');
+      return false;
+    }
+    o.n=name;
+    o.fm=fm;
+    o.adr=document.getElementById('eo-adr').value.trim()||'—';
+    var media=[];
+    if(document.getElementById('eo-el').checked)media.push('El');
+    if(document.getElementById('eo-heat').checked)media.push('Tep');
+    if(document.getElementById('eo-cool').checked)media.push('Chl');
+    if(document.getElementById('eo-gas').checked)media.push('Plyn');
+    if(document.getElementById('eo-water').checked)media.push('Voda');
+    o.me=media.join(' · ')||'—';
+    saveObjectToFirestore(idx);
+    reRenderActive();
+    return true;
+  }};
+  modal.classList.add('active');
+  setTimeout(function(){document.getElementById('eo-name').focus();document.getElementById('eo-name').select();},50);
+}
+
+// === Delete object ===
+async function deleteObject(idx){
+  var o=OBJ[idx];
+  if(!o)return;
+  var hasData=false;
+  if(o.tenants){
+    for(var m in o.tenants){
+      if(Object.keys(o.tenants[m]||{}).length>0){hasData=true;break;}
+    }
+  }
+  var warning='Opravdu smazat objekt "'+o.n+'"?\n\nID: '+o.id;
+  if(hasData)warning+='\n\n⚠ POZOR: Objekt obsahuje data o spotřebách nájemců. Po smazání budou všechna data ztracena!';
+  warning+='\n\nTato akce je nevratná.';
+  if(!confirm(warning))return;
+  // Druhé potvrzení pro objekty s daty
+  if(hasData){
+    var typed=prompt('Pro potvrzení napište přesný název objektu: '+o.n);
+    if(typed!==o.n){alert('Smazání zrušeno – jména se neshodují.');return;}
+  }
+  setSyncStatus('saving');
+  try{
+    await fbDB.collection('objects').doc(o.id).delete();
+    OBJ.splice(idx,1);
+    setSyncStatus('synced');
+    reRenderActive();
+  }catch(e){
+    console.error('Delete failed:',e);
+    setSyncStatus('error');
+    alert('Smazání selhalo: '+e.message);
+  }
 }
 
 renderP();
