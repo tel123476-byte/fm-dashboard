@@ -13,7 +13,7 @@ body{background:var(--wh)}
 .logo-name sup{font-size:9px;vertical-align:super;color:#9a9a9a}
 .logo-sub{font-size:9.5px;color:#c0c0c0;font-weight:300}
 .topbar-right{display:flex;align-items:center;gap:12px}
-.sync-dot{width:7px;height:7px;background:#e6a817;border-radius:50%;display:inline-block;margin-right:4px}
+.sync-dot{width:7px;height:7px;background:#888;border-radius:50%;display:inline-block;margin-right:4px;transition:background .3s}
 .sync-label{font-size:11px;color:var(--gm)}
 .user-pill{background:var(--gbg);border:1px solid var(--brd);border-radius:20px;padding:4px 12px 4px 8px;font-size:12px;color:var(--gd);display:flex;align-items:center;gap:6px}
 .role-badge{background:var(--navy);color:#fff;font-size:9px;padding:1px 7px;border-radius:10px;font-weight:600}
@@ -135,7 +135,7 @@ tr:hover td{background:#f9fbfc}
     <div class="logo-text"><span class="logo-name">rilancio<sup>®</sup></span><span class="logo-sub">facility management je jen začátek ...</span></div>
   </div>
   <div class="topbar-right">
-    <span class="sync-label" title="Aplikace běží v demo režimu — data se po obnovení stránky vrátí na výchozí hodnoty. Persistentní ukládání bude ve fázi Firebase."><span class="sync-dot"></span>Demo režim</span>
+    <span class="sync-label" title="Stav synchronizace s cloudem"><span class="sync-dot"></span>Synchronizováno</span>
     <div class="user-pill" id="user-pill">👤 <span id="user-email">...</span> <span class="role-badge">Admin</span></div>
     <button onclick="logoutUser()" style="background:none;border:1px solid var(--brd);color:var(--gd);padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit" title="Odhlásit se">Odhlásit</button>
   </div>
@@ -441,6 +441,7 @@ tr:hover td{background:#f9fbfc}
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
 // Firebase config
 const firebaseConfig = {
@@ -453,6 +454,7 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
+const fbDB = firebase.firestore();
 fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
 </script>
 
@@ -533,11 +535,108 @@ fbAuth.onAuthStateChanged(user=>{
   if(user){
     overlay.classList.add('hidden');
     if(emailSpan)emailSpan.textContent=user.email;
+    // Načti data z Firestore po přihlášení
+    loadObjectsFromFirestore();
   }else{
     overlay.classList.remove('hidden');
     if(emailSpan)emailSpan.textContent='...';
   }
 });
+
+// === Firestore: persistence dat ===
+function setSyncStatus(status){
+  const label=document.querySelector('.sync-label');
+  if(!label)return;
+  const states={
+    loading:['#888','⟳ Načítání...','Stahování dat z cloudu'],
+    saving:['#3498db','⟳ Ukládání...','Změny se ukládají do cloudu'],
+    synced:['#2ecc71','● Synchronizováno','Data v cloudu jsou aktuální'],
+    error:['#c0392b','● Chyba sync','Synchronizace selhala – data jen lokálně'],
+    seeding:['#9b59b6','⟳ První spuštění...','Nahrávám demo data do cloudu'],
+    offline:['#e6a817','● Offline','Bez připojení – pracujete lokálně']
+  };
+  const s=states[status]||states.synced;
+  label.innerHTML='<span class="sync-dot" style="background:'+s[0]+'"></span>'+s[1];
+  label.title=s[2];
+}
+
+async function loadObjectsFromFirestore(){
+  setSyncStatus('loading');
+  try{
+    const snap=await fbDB.collection('objects').get();
+    if(snap.empty){
+      // První spuštění - seed demo data do cloudu
+      await seedObjectsToFirestore();
+    }else{
+      // Načti cloud data - přepiš lokální OBJ
+      const cloudObjs=[];
+      snap.forEach(doc=>cloudObjs.push(doc.data()));
+      // Seřaď podle původního pořadí v OBJ (nebo podle id)
+      const order={};
+      OBJ.forEach((o,i)=>order[o.id]=i);
+      cloudObjs.sort((a,b)=>(order[a.id]??99)-(order[b.id]??99));
+      // Přepiš OBJ in place
+      OBJ.length=0;
+      cloudObjs.forEach(o=>OBJ.push(o));
+      setSyncStatus('synced');
+      // Re-render aktivní sekce
+      reRenderActive();
+    }
+  }catch(e){
+    console.error('Load failed:',e);
+    setSyncStatus('error');
+  }
+}
+
+async function seedObjectsToFirestore(){
+  setSyncStatus('seeding');
+  try{
+    const batch=fbDB.batch();
+    OBJ.forEach(o=>{
+      const ref=fbDB.collection('objects').doc(o.id);
+      batch.set(ref,deepClean(o));
+    });
+    await batch.commit();
+    setSyncStatus('synced');
+  }catch(e){
+    console.error('Seed failed:',e);
+    setSyncStatus('error');
+  }
+}
+
+async function saveObjectToFirestore(idx){
+  setSyncStatus('saving');
+  try{
+    const o=OBJ[idx];
+    await fbDB.collection('objects').doc(o.id).set(deepClean(o));
+    setSyncStatus('synced');
+  }catch(e){
+    console.error('Save failed:',e);
+    setSyncStatus('error');
+    alert('Změny se neuložily do cloudu. Zkontrolujte připojení.');
+  }
+}
+
+// Firestore nepodporuje undefined - nahraď null. Hluboké klonování pro bezpečnost.
+function deepClean(obj){
+  if(obj===undefined)return null;
+  if(obj===null||typeof obj!=='object')return obj;
+  if(Array.isArray(obj))return obj.map(deepClean);
+  const out={};
+  for(const k in obj){
+    if(obj[k]!==undefined)out[k]=deepClean(obj[k]);
+  }
+  return out;
+}
+
+function reRenderActive(){
+  try{
+    if(document.getElementById('s-prehled')&&document.getElementById('s-prehled').classList.contains('active')&&typeof renderP==='function')renderP();
+    else if(document.getElementById('s-objekty')&&document.getElementById('s-objekty').classList.contains('active')&&typeof renderO==='function')renderO();
+    else if(document.getElementById('s-srovnani')&&document.getElementById('s-srovnani').classList.contains('active')&&typeof renderSr==='function')renderSr();
+    else if(document.getElementById('s-alarmy')&&document.getElementById('s-alarmy').classList.contains('active')&&typeof renderAlarmy==='function')renderAlarmy();
+  }catch(e){console.warn('Re-render skipped:',e);}
+}
 
 const OBJ=[
   {id:'CHSQ',n:'Churchill Square',fm:'fm.chsq@rilancio.cz',adr:'Italská 2581/67, Praha 2',pl:5800,os:450,me:'El · Tep · Chl · Plyn · Voda',pos:'03/2026',st:'ok',
@@ -1540,6 +1639,7 @@ function editArea(idx){
     if(ren<0||com<0){alert('Plochy musí být nezáporná čísla.');return false;}
     o.plochy={rental:ren,common:com};
     o.pl=ren+com; // total for backward compat
+    if(typeof saveObjectToFirestore==='function')saveObjectToFirestore(idx);
     if(document.getElementById('s-objekty').classList.contains('active'))renderO();
     if(document.getElementById('s-prehled').classList.contains('active'))renderP();
     if(document.getElementById('s-detail').classList.contains('active'))openDetail(idx);
@@ -1568,6 +1668,7 @@ function editPersons(idx){
         }
         o.os=num;
       }
+      if(typeof saveObjectToFirestore==='function')saveObjectToFirestore(idx);
       if(document.getElementById('s-objekty').classList.contains('active'))renderO();
       if(document.getElementById('s-prehled').classList.contains('active'))renderP();
       if(document.getElementById('s-detail').classList.contains('active'))openDetail(idx);
