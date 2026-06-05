@@ -435,29 +435,25 @@ tr:hover td{background:#f9fbfc}
         <div class="upz" id="upz" onclick="document.getElementById('finp').click()">
           <span style="font-size:28px;display:block;margin-bottom:8px">📊</span>
           <p style="font-size:13px;color:var(--gm)" id="upz-text">Přetáhněte soubor nebo klikněte</p>
-          <small style="font-size:11px;color:var(--gl)" id="upz-sub">xlsx · xls · csv · max 10 MB</small>
-          <input type="file" id="finp" accept=".xlsx,.xls,.csv" style="display:none">
+          <small style="font-size:11px;color:var(--gl)" id="upz-sub">xlsx · xls · max 10 MB</small>
+          <input type="file" id="finp" accept=".xlsx,.xls" style="display:none">
         </div>
         <div id="import-status" style="display:none;margin-bottom:12px"></div>
         <div class="card"><div class="ct"><span class="ct-a">▌</span> Parametry uploadu</div>
           <div style="display:grid;gap:8px">
-            <div><label class="flab">Objekt</label><select class="finp"><option>Churchill Square</option><option>Praha Karlín</option><option>Brno centrum</option></select></div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <div><label class="flab">Rok</label><select class="finp"><option>2026</option><option>2025</option></select></div>
-              <div><label class="flab">Měsíc</label><select class="finp"><option>Březen (03)</option><option>Únor (02)</option><option>Leden (01)</option></select></div>
-            </div>
-            <button class="btn-p" style="width:100%;justify-content:center;padding:9px" id="btn-submit">↑ Odeslat ke zpracování</button>
+            <div><label class="flab">Objekt <span style="color:var(--red)">*</span></label><select class="finp" id="imp-objekt"></select></div>
+            <button class="btn-p" style="width:100%;justify-content:center;padding:9px" id="btn-submit">↑ Pokračovat do mapovacího wizardu →</button>
+            <p style="font-size:11px;color:var(--gm);margin:6px 0 0;text-align:center">Wizard vás provede mapováním sloupců, výběrem médií a roků. Můžete naimportovat víc měsíců najednou.</p>
           </div>
         </div>
       </div>
       <div class="card"><div class="ct"><span class="ct-a">▌</span> Rozpoznávané listy</div>
         <table style="font-size:11px"><thead><tr><th>List</th><th>Médium</th><th>Jednotka</th></tr></thead><tbody>
           <tr><td>Elektroměry D / E</td><td>Elektřina</td><td>kWh</td></tr>
-          <tr><td>Kalorimetry D / E</td><td>Teplo + Chlazení</td><td>GJ</td></tr>
-          <tr><td>Plynoměry D / E</td><td>Plyn</td><td>m³</td></tr>
+          <tr><td>Kalorimetry D / E</td><td>Teplo</td><td>GJ</td></tr>
           <tr><td>Vodoměry D / E</td><td>Voda</td><td>m³</td></tr>
         </tbody></table>
-        <div style="margin-top:14px"><div style="font-size:10px;color:var(--gm);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;font-weight:700">Doporučené pojmenování</div><code style="background:var(--gbg);padding:5px 10px;border-radius:3px;font-size:12px;color:var(--navy)">2026_03_mesicni_report.xlsx</code></div>
+        <div style="margin-top:14px;padding:10px;background:var(--gbg);border-radius:4px;font-size:11px;color:var(--gm)"><b style="color:var(--gd)">💡 Tip:</b> Wizard automaticky detekuje měsíční sloupce dle hlaviček "Odečet za MM/YYYY". Importuje hodnoty ze sloupce "spotřeba". Agreguje per nájemce.</div>
       </div>
     </div>
   </div>
@@ -653,6 +649,8 @@ async function loadObjectsFromFirestore(){
     }
     // Načti alarm notes (vždy, i po seedu)
     await loadAlarmNotesFromFirestore();
+    // Načti import log
+    await loadImportLogFromFirestore();
     // Re-render aktivní sekce
     reRenderActive();
   }catch(e){
@@ -771,6 +769,51 @@ async function deleteAlarmNote(noteId){
   }
 }
 
+// === Import log (Firestore) ===
+async function loadImportLogFromFirestore(){
+  try{
+    const snap=await fbDB.collection('import_logs').orderBy('ts','desc').limit(50).get();
+    LOG.length=0;
+    snap.forEach(doc=>{
+      const d=doc.data();
+      var date=d.ts;if(date&&date.toDate)date=date.toDate();
+      LOG.push({
+        id:doc.id.substr(-4).toUpperCase(),
+        obj:d.objectName||'—',
+        f:d.fileName||'—',
+        d:date instanceof Date?(date.toLocaleDateString('cs-CZ')+' '+date.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})):'—',
+        z:d.rowsCount||0,
+        st:d.status||'ok',
+        zp:d.message||'OK'
+      });
+    });
+  }catch(e){
+    console.error('Load import log failed:',e);
+  }
+}
+
+async function saveImportLogEntry(entry){
+  try{
+    var payload={
+      objectId:entry.objectId,
+      objectName:entry.objectName,
+      fileName:entry.fileName,
+      ts:firebase.firestore.FieldValue.serverTimestamp(),
+      rowsCount:entry.rowsCount||0,
+      status:entry.status||'ok',
+      message:entry.message||'OK',
+      user:fbAuth.currentUser?fbAuth.currentUser.email:'unknown'
+    };
+    await fbDB.collection('import_logs').add(payload);
+    await loadImportLogFromFirestore();
+    if(document.getElementById('s-log')&&document.getElementById('s-log').classList.contains('active')){
+      if(typeof renderL==='function')renderL();
+    }
+  }catch(e){
+    console.error('Save log entry failed:',e);
+  }
+}
+
 const OBJ=[
   {id:'CHSQ',n:'Churchill Square',fm:'fm.chsq@rilancio.cz',adr:'Italská 2581/67, Praha 2',pl:5800,os:450,me:'El · Tep · Chl · Plyn · Voda',pos:'03/2026',st:'ok',
    plochy:{rental:4200,common:1600},
@@ -821,11 +864,7 @@ const OBJ=[
    tenants:{el:{},heat:{},cool:{},gas:{},water:{}}}
 ];
 
-const LOG=[
-  {id:'A1F3',obj:'Churchill Square',f:'2026_03_mesicni_report.xlsx',d:'01.06.2026 08:14',z:387,st:'ok',zp:'Zpracováno OK'},
-  {id:'B2E7',obj:'Brno centrum',f:'brno_03_2026.xlsx',d:'31.05.2026 16:42',z:142,st:'ok',zp:'Zpracováno OK'},
-  {id:'C9D2',obj:'Praha Karlín',f:'report_unor.xlsx',d:'28.05.2026 11:03',z:0,st:'err',zp:'Chybí list Elektroměry'}
-];
+let LOG=[]; // Načítá se z Firestore (collection import_logs)
 
 const E25=[59079,54744,54732,58054,57705,57324,42075,42333,52092,50071,51300,51900];
 const E26=[49705,49143,52999,null,null,null,null,null,null,null,null,null];
@@ -859,6 +898,7 @@ function showSec(id){
   if(id==='srovnani')renderSr();
   if(id==='export')initExport();
   if(id==='log')renderL();
+  if(id==='import'&&typeof refreshImportObjectDropdown==='function')refreshImportObjectDropdown();
 }
 
 function openDetail(idx){
@@ -2664,12 +2704,16 @@ function generateExport(){
 }
 
 function renderL(){
+  if(LOG.length===0){
+    document.getElementById('tbl-l').innerHTML='<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--gl)"><div style="font-size:28px;margin-bottom:6px">📥</div><div>Zatím žádné importy.</div><div style="font-size:11px;margin-top:4px">Nahrajte první report v sekci <b>IMPORT</b>.</div></td></tr>';
+    return;
+  }
   document.getElementById('tbl-l').innerHTML=LOG.map(function(l){
     return '<tr><td style="font-family:monospace;font-size:11px;color:var(--gm)">'+l.id+'</td><td class="tn">'+l.obj+'</td><td style="font-size:11px;color:var(--gm)">'+l.f+'</td><td style="font-size:11px">'+l.d+'</td><td style="text-align:center">'+(l.z||'—')+'</td><td>'+SB2[l.st]+'</td><td style="font-size:11px;color:var(--gm)">'+l.zp+'</td></tr>';
   }).join('');
 }
 
-// IMPORT
+// IMPORT - reálné napojení na wizard
 var selectedFile=null;
 document.getElementById('finp').addEventListener('change',function(e){
   if(e.target.files.length>0){
@@ -2682,6 +2726,32 @@ document.getElementById('finp').addEventListener('change',function(e){
   }
 });
 
+// Drag&drop pro sekci IMPORT
+(function(){
+  var upz=document.getElementById('upz');
+  if(upz){
+    upz.addEventListener('dragover',function(e){e.preventDefault();upz.style.borderColor='var(--teal)';upz.style.background='var(--tl)';});
+    upz.addEventListener('dragleave',function(e){if(!selectedFile){upz.style.borderColor='';upz.style.background='';}});
+    upz.addEventListener('drop',function(e){
+      e.preventDefault();
+      var files=e.dataTransfer.files;
+      if(files.length>0){
+        document.getElementById('finp').files=files;
+        document.getElementById('finp').dispatchEvent(new Event('change'));
+      }
+    });
+  }
+})();
+
+// Aktualizovat dropdown objektů v sekci IMPORT dynamicky
+function refreshImportObjectDropdown(){
+  var sel=document.getElementById('imp-objekt');
+  if(!sel)return;
+  var currentVal=sel.value;
+  sel.innerHTML=OBJ.map(function(o,i){return '<option value="'+i+'">'+o.n+'</option>';}).join('');
+  if(currentVal)sel.value=currentVal;
+}
+
 document.getElementById('btn-submit').addEventListener('click',function(){
   var st=document.getElementById('import-status');
   if(!selectedFile){
@@ -2689,22 +2759,25 @@ document.getElementById('btn-submit').addEventListener('click',function(){
     st.innerHTML='<div style="background:var(--rl);border:1px solid var(--red);border-radius:6px;padding:12px 16px;font-size:12px;color:var(--red)">⚠ Vyberte prosím soubor.</div>';
     return;
   }
-  var btn=this;btn.disabled=true;btn.innerHTML='<span class="spin">⟳</span> Zpracovávám...';
-  st.style.display='block';
-  st.innerHTML='<div style="background:var(--gbg);border:1px solid var(--brd);border-radius:6px;padding:12px 16px;font-size:12px;color:var(--gd)"><div style="margin-bottom:6px"><span class="spin" style="color:var(--teal)">⟳</span> Nahrávám soubor <b>'+selectedFile.name+'</b> ...</div><div style="background:var(--brd);border-radius:2px;height:4px;overflow:hidden"><div id="prog-bar" style="height:4px;background:var(--teal);width:0%;transition:width .4s"></div></div></div>';
-  setTimeout(function(){document.getElementById('prog-bar').style.width='30%';},300);
-  setTimeout(function(){document.getElementById('prog-bar').style.width='70%';},1000);
+  // Načíst objekt z dropdownu
+  var sel=document.getElementById('imp-objekt');
+  var objIdx=sel?parseInt(sel.value):0;
+  if(isNaN(objIdx)||objIdx<0||objIdx>=OBJ.length){
+    alert('Vyberte objekt.');return;
+  }
+  st.style.display='none';
+  // Spustit wizard s předvyplněným souborem a objektem
+  openImportWizard(objIdx);
+  // Předvyplnit soubor (počkat až se wizard otevře)
   setTimeout(function(){
-    var rows=Math.floor(Math.random()*200)+180;
-    st.innerHTML='<div style="background:var(--glt);border:1px solid var(--green);border-radius:6px;padding:14px 16px;font-size:12px;color:var(--green)">✅ <b>Import úspěšný!</b> Soubor <b>'+selectedFile.name+'</b> zpracován.<br><span style="font-size:11px;color:var(--gm);margin-top:4px;display:inline-block">'+rows+' záznamů · Import ID: '+Math.random().toString(36).substr(2,4).toUpperCase()+'</span></div>';
-    btn.disabled=false;btn.innerHTML='↑ Odeslat ke zpracování';
+    wizardHandleFile(selectedFile);
     selectedFile=null;
     document.getElementById('upz').style.borderColor='';
     document.getElementById('upz').style.background='';
     document.getElementById('upz-text').innerHTML='Přetáhněte soubor nebo klikněte';
     document.getElementById('upz-sub').textContent='xlsx · xls · csv · max 10 MB';
     document.getElementById('finp').value='';
-  },2200);
+  },200);
 });
 
 async function saveNewObject(){
@@ -3439,10 +3512,23 @@ async function wizardCommit(){
     await fbDB.collection('objects').doc(o.id).set(deepClean(o));
     setSyncStatus('synced');
     var rowsCount=0;
+    var mediaImported=[];
     Object.keys(wizState.pendingData).forEach(function(m){
+      mediaImported.push(m);
       Object.keys(wizState.pendingData[m]).forEach(function(t){
         rowsCount+=Object.keys(wizState.pendingData[m][t]).length;
       });
+    });
+    // Uložit záznam do import logu
+    var medLabel={el:'El',heat:'Tep',cool:'Chl',gas:'Plyn',water:'Voda'};
+    var medMsg=mediaImported.map(function(m){return medLabel[m]||m;}).join(', ');
+    await saveImportLogEntry({
+      objectId:o.id,
+      objectName:o.n,
+      fileName:wizState.file?wizState.file.name:'?',
+      rowsCount:rowsCount,
+      status:'ok',
+      message:'Naimportováno: '+medMsg
     });
     var savedObjIdx=wizState.objIdx;
     var body=document.getElementById('wiz-body');
