@@ -68,6 +68,39 @@ body{background:var(--wh)}
 .login-error{background:#fee;border:1px solid #faa;color:#a00;font-size:11px;padding:8px 12px;border-radius:5px;margin-top:10px;display:none}
 .login-error.active{display:block}
 .login-footer{font-size:10px;color:var(--gl);text-align:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--brd)}
+/* === Import wizard === */
+.wiz-overlay{position:fixed;inset:0;background:rgba(44,62,90,.5);z-index:9000;display:none;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto}
+.wiz-overlay.active{display:flex}
+.wiz-box{background:#fff;border-radius:10px;width:min(900px,95vw);box-shadow:0 8px 30px rgba(0,0,0,.2);border-top:4px solid var(--teal);max-height:90vh;display:flex;flex-direction:column}
+.wiz-hdr{padding:20px 26px 14px;border-bottom:1px solid var(--brd)}
+.wiz-title{font-size:18px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.wiz-sub{font-size:11px;color:var(--gm)}
+.wiz-steps{display:flex;gap:8px;margin-top:14px}
+.wiz-step{flex:1;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gl);padding:6px 10px;border-radius:4px;background:var(--gbg);border:1px solid var(--brd);text-align:center}
+.wiz-step.active{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
+.wiz-step.done{background:#e8f5f5;color:var(--teal);border-color:var(--teal)}
+.wiz-body{padding:22px 26px;overflow-y:auto;flex:1}
+.wiz-foot{padding:14px 26px;border-top:1px solid var(--brd);display:flex;justify-content:space-between;gap:8px;background:#fafbfc;border-radius:0 0 10px 10px}
+.wiz-foot .wiz-left{display:flex;gap:8px}
+.wiz-foot .wiz-right{display:flex;gap:8px}
+.wiz-drop{border:2px dashed var(--brd);border-radius:8px;padding:30px;text-align:center;cursor:pointer;transition:all .2s}
+.wiz-drop:hover{border-color:var(--teal);background:#f8fcfc}
+.wiz-drop.has-file{border-color:var(--green);background:#f4faf6}
+.wiz-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:10px}
+.wiz-table th,.wiz-table td{border:1px solid var(--brd);padding:6px 8px;text-align:left}
+.wiz-table th{background:var(--gbg);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)}
+.wiz-table tr.tenant-row td{font-weight:600}
+.wiz-col-hi{background:#e8f5f5!important;color:var(--teal)!important}
+.wiz-col-tenant{background:#fef9e8!important;color:#b8860b!important}
+.wiz-info{background:#e8f4fc;border:1px solid #3498db;border-radius:5px;padding:10px 14px;font-size:11px;color:#1f618d;margin:10px 0}
+.wiz-warn{background:#fef9e8;border:1px solid #e6a817;border-radius:5px;padding:10px 14px;font-size:11px;color:#7d5e0e;margin:10px 0}
+.wiz-err{background:#fee;border:1px solid #c0392b;border-radius:5px;padding:10px 14px;font-size:11px;color:#7d2e22;margin:10px 0}
+.wiz-success{background:#e8f8ee;border:1px solid var(--green);border-radius:5px;padding:10px 14px;font-size:11px;color:#1e5e34;margin:10px 0}
+.wiz-input{font-size:12px;padding:6px 8px;border:1px solid var(--brd);border-radius:4px;font-family:inherit;color:var(--navy)}
+.wiz-sheet-pick{display:grid;grid-template-columns:1fr 140px 110px 90px;gap:8px;padding:8px 10px;border:1px solid var(--brd);border-radius:5px;margin-bottom:6px;align-items:center;font-size:12px}
+.wiz-sheet-pick.skip{opacity:.45;background:var(--gbg)}
+.wiz-sheet-pick .sn{font-weight:600;color:var(--navy)}
+.wiz-sheet-pick .smeta{font-size:10px;color:var(--gm)}
 .btn-back{background:none;border:none;font-size:12px;color:var(--teal);cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:600;margin-bottom:16px;padding:0}
 .btn-back:hover{text-decoration:underline}
 .tw{border:1px solid var(--brd);border-radius:6px;overflow-x:auto;margin-bottom:16px}
@@ -172,7 +205,10 @@ tr:hover td{background:#f9fbfc}
   </div>
 
   <div class="section" id="s-detail">
-    <button class="btn-back" onclick="showSec('prehled')">← Zpět na přehled</button>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px">
+      <button class="btn-back" onclick="showSec('prehled')" style="margin:0">← Zpět na přehled</button>
+      <button class="btn-p" onclick="openImportWizard(curDI)" style="padding:6px 12px;font-size:11px" title="Naimportovat měsíční spotřeby z .xlsx souboru">📥 Import xlsx</button>
+    </div>
     <h1 style="font-size:19px;font-weight:700;color:var(--navy);margin-bottom:6px" id="det-title">—</h1>
     <div class="obj-info" id="det-info"></div>
     <div class="tab-row" id="det-tabs"></div>
@@ -446,6 +482,32 @@ tr:hover td{background:#f9fbfc}
 
 <div class="footer"><span>Rilancio s.r.o. · Krakovská 1366/25, Praha 1 · rilancio.cz</span><span class="footer-r">FM Spotřeby v1.0 · Powered by Rilancio</span></div>
 
+<!-- Import Wizard Modal -->
+<div class="wiz-overlay" id="wiz-overlay">
+  <div class="wiz-box">
+    <div class="wiz-hdr">
+      <div class="wiz-title" id="wiz-title">Import dat z Excelu</div>
+      <div class="wiz-sub" id="wiz-sub">Průvodce nahráním měsíčních spotřeb z .xlsx souboru</div>
+      <div class="wiz-steps">
+        <div class="wiz-step active" id="wstep-1">1 · Soubor</div>
+        <div class="wiz-step" id="wstep-2">2 · Mapování</div>
+        <div class="wiz-step" id="wstep-3">3 · Náhled</div>
+        <div class="wiz-step" id="wstep-4">4 · Uložení</div>
+      </div>
+    </div>
+    <div class="wiz-body" id="wiz-body"></div>
+    <div class="wiz-foot">
+      <div class="wiz-left">
+        <button class="btn-o" onclick="closeWizard()">Zrušit</button>
+      </div>
+      <div class="wiz-right">
+        <button class="btn-o" id="wiz-back" onclick="wizardBack()" style="display:none">← Zpět</button>
+        <button class="btn-p" id="wiz-next" onclick="wizardNext()" disabled>Pokračovat →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -467,6 +529,7 @@ fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 <script>
 const T='#00b4b4',NV='#2c3e5a',AM='#e6a817',GN='#2e9e5e',RD='#c0392b',GR='#b0b0b0';
 const MO=['Led','Úno','Bře','Dub','Kvě','Čer','Čvc','Srp','Zář','Říj','Lis','Pro'];
@@ -2788,6 +2851,620 @@ async function deleteObject(idx){
     setSyncStatus('error');
     alert('Smazání selhalo: '+e.message);
   }
+}
+
+// === Import xlsx wizard ===
+var wizState={
+  objIdx:-1,
+  file:null,
+  workbook:null,
+  sheetMaps:[],
+  currentSheet:-1,
+  step:1,
+  pendingData:null
+};
+
+function openImportWizard(objIdx){
+  if(typeof XLSX==='undefined'){
+    alert('Knihovna pro Excel parsing se ještě nenačetla. Zkuste to za chvíli (pokud nepomůže, refresh stránky).');
+    return;
+  }
+  wizState={objIdx:objIdx,file:null,workbook:null,sheetMaps:[],currentSheet:-1,step:1,pendingData:null};
+  document.getElementById('wiz-overlay').classList.add('active');
+  document.getElementById('wiz-title').textContent='Import dat z Excelu – '+OBJ[objIdx].n;
+  document.querySelector('.wiz-foot').style.display='';
+  wizardSetStep(1);
+  wizardRenderStep1();
+}
+function closeWizard(){
+  if(wizState.step>1&&wizState.step<4&&!confirm('Zrušit import? Nahrané změny se neuloží.'))return;
+  document.getElementById('wiz-overlay').classList.remove('active');
+  wizState={objIdx:-1,file:null,workbook:null,sheetMaps:[],currentSheet:-1,step:1,pendingData:null};
+}
+function wizardSetStep(n){
+  wizState.step=n;
+  for(var i=1;i<=4;i++){
+    var el=document.getElementById('wstep-'+i);
+    el.classList.remove('active','done');
+    if(i<n)el.classList.add('done');
+    else if(i===n)el.classList.add('active');
+  }
+  document.getElementById('wiz-back').style.display=n>1?'inline-block':'none';
+  var subs=[
+    'Krok 1 z 4: Nahrajte soubor a vyberte které sheety chcete importovat.',
+    'Krok 2 z 4: Pro každý sheet zkontrolujte detekci sloupců.',
+    'Krok 3 z 4: Náhled dat která budou uložena (agregace per nájemce).',
+    'Krok 4 z 4: Potvrzení a uložení do cloudu.'
+  ];
+  document.getElementById('wiz-sub').textContent=subs[n-1];
+}
+function wizardBack(){
+  if(wizState.step===2&&wizState.currentSheet>0){
+    var prev=-1;
+    for(var i=wizState.currentSheet-1;i>=0;i--){
+      if(wizState.sheetMaps[i].medium&&wizState.sheetMaps[i].medium!=='skip'){prev=i;break;}
+    }
+    if(prev>=0){wizState.currentSheet=prev;wizardRenderStep2();return;}
+  }
+  if(wizState.step>1){
+    wizardSetStep(wizState.step-1);
+    if(wizState.step===1)wizardRenderStep1();
+    else if(wizState.step===2){
+      wizState.currentSheet=findNextActiveSheet(0);
+      wizardRenderStep2();
+    }
+    else if(wizState.step===3)wizardRenderStep3();
+  }
+}
+function wizardNext(){
+  if(wizState.step===1){
+    var any=wizState.sheetMaps.filter(function(s){return s.medium&&s.medium!=='skip';});
+    if(any.length===0){alert('Vyberte alespoň jeden sheet s médiem.');return;}
+    wizardSetStep(2);
+    wizState.currentSheet=findNextActiveSheet(0);
+    wizardRenderStep2();
+  } else if(wizState.step===2){
+    var nextI=findNextActiveSheet(wizState.currentSheet+1);
+    if(nextI>=0){
+      wizState.currentSheet=nextI;
+      wizardRenderStep2();
+    } else {
+      wizardSetStep(3);
+      wizardRenderStep3();
+    }
+  } else if(wizState.step===3){
+    wizardSetStep(4);
+    wizardRenderStep4();
+  } else if(wizState.step===4){
+    wizardCommit();
+  }
+}
+function findNextActiveSheet(fromIdx){
+  for(var i=fromIdx;i<wizState.sheetMaps.length;i++){
+    if(wizState.sheetMaps[i].medium&&wizState.sheetMaps[i].medium!=='skip')return i;
+  }
+  return -1;
+}
+
+function wizardRenderStep1(){
+  var body=document.getElementById('wiz-body');
+  var html='';
+  if(!wizState.file){
+    html='<div class="wiz-drop" onclick="document.getElementById(\'wiz-fileinput\').click()" id="wiz-drop">'+
+      '<div style="font-size:32px;margin-bottom:6px">📥</div>'+
+      '<div style="font-weight:600;color:var(--navy)">Klikněte pro výběr souboru</div>'+
+      '<div style="font-size:11px;color:var(--gm);margin-top:4px">nebo přetáhněte .xlsx soubor sem</div>'+
+      '<input type="file" id="wiz-fileinput" accept=".xlsx,.xls" style="display:none" onchange="wizardHandleFile(this.files[0])">'+
+    '</div>'+
+    '<div class="wiz-info" style="margin-top:14px"><b>Tip:</b> Aplikace umí importovat ze souborů ve formátu měsíčních reportů. Wizard vás provede mapováním. V této verzi importuje hodnoty z detekovaných sloupců "spotřeba" za jednotlivé měsíce a agreguje je per nájemce.</div>';
+  } else {
+    html='<div class="wiz-drop has-file">'+
+      '<div style="font-size:24px;margin-bottom:4px">✓</div>'+
+      '<div style="font-weight:600;color:var(--navy)">'+wizState.file.name+'</div>'+
+      '<div style="font-size:11px;color:var(--gm)">'+(wizState.file.size/1024).toFixed(0)+' kB · '+(wizState.workbook?wizState.workbook.SheetNames.length+' sheetů':'načítám...')+'</div>'+
+      '<button class="btn-o" onclick="wizardClearFile()" style="font-size:10px;margin-top:8px">Vybrat jiný soubor</button>'+
+    '</div>';
+    if(wizState.workbook){
+      html+='<div style="margin-top:18px"><b style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Vyberte sheety k importu:</b></div>';
+      html+='<div style="margin-top:8px">';
+      html+='<div style="display:grid;grid-template-columns:1fr 200px 110px 70px;gap:8px;padding:4px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--gl);font-weight:700"><div>Sheet</div><div>Médium</div><div>Rok</div><div>Řádky</div></div>';
+      wizState.sheetMaps.forEach(function(sm,i){
+        html+='<div class="wiz-sheet-pick'+(sm.medium==='skip'||!sm.medium?' skip':'')+'" id="wsp-'+i+'" style="grid-template-columns:1fr 200px 110px 70px">'+
+          '<div><div class="sn">'+sm.name+'</div></div>'+
+          '<select class="wiz-input" onchange="wizardSetSheetMedium('+i+',this.value)">'+
+            '<option value="skip"'+(sm.medium==='skip'||!sm.medium?' selected':'')+'>— Přeskočit —</option>'+
+            '<option value="el"'+(sm.medium==='el'?' selected':'')+'>⚡ Elektřina (kWh)</option>'+
+            '<option value="heat"'+(sm.medium==='heat'?' selected':'')+'>🔥 Teplo (GJ)</option>'+
+            '<option value="cool"'+(sm.medium==='cool'?' selected':'')+'>❄ Chlazení (GJ)</option>'+
+            '<option value="gas"'+(sm.medium==='gas'?' selected':'')+'>🔥 Plyn (m³)</option>'+
+            '<option value="water"'+(sm.medium==='water'?' selected':'')+'>💧 Voda (m³)</option>'+
+          '</select>'+
+          '<select class="wiz-input" onchange="wizState.sheetMaps['+i+'].year=parseInt(this.value)">'+
+            '<option value="2026"'+(sm.year===2026?' selected':'')+'>2026</option>'+
+            '<option value="2025"'+(sm.year===2025?' selected':'')+'>2025 (ref)</option>'+
+          '</select>'+
+          '<div style="font-size:11px;color:var(--gm)">'+sm.rowCount+'</div>'+
+        '</div>';
+      });
+      html+='</div>';
+      var suggested=[];
+      wizState.sheetMaps.forEach(function(sm,i){
+        var n=sm.name.toLowerCase();
+        var sug='';
+        if(n.indexOf('elektro')>=0)sug='el';
+        else if(n.indexOf('vodom')>=0||n.match(/\bvoda\b/))sug='water';
+        else if(n.indexOf('kalor')>=0||n.indexOf('teplo')>=0)sug='heat';
+        else if(n.indexOf('plyn')>=0)sug='gas';
+        else if(n.indexOf('chlaz')>=0)sug='cool';
+        if(sug&&(!sm.medium||sm.medium==='skip'))suggested.push({i:i,name:sm.name,sug:sug});
+      });
+      if(suggested.length>0){
+        html+='<div class="wiz-info"><b>💡 Návrh auto-detekce dle názvu sheetu:</b><br>'+
+          suggested.map(function(s){return '<b>'+s.name+'</b> → '+({el:'Elektřina',heat:'Teplo',cool:'Chlazení',gas:'Plyn',water:'Voda'}[s.sug]);}).join('<br>')+
+          '<br><button class="btn-i" onclick="wizardApplySuggestions()" style="font-size:10px;margin-top:6px">Aplikovat všechny návrhy</button></div>';
+      }
+    }
+  }
+  body.innerHTML=html;
+  wizardUpdateNextButton();
+  var drop=document.getElementById('wiz-drop');
+  if(drop&&!wizState.file){
+    drop.addEventListener('dragover',function(e){e.preventDefault();drop.style.background='#f0f9f9';});
+    drop.addEventListener('dragleave',function(e){drop.style.background='';});
+    drop.addEventListener('drop',function(e){e.preventDefault();drop.style.background='';if(e.dataTransfer.files[0])wizardHandleFile(e.dataTransfer.files[0]);});
+  }
+}
+function wizardClearFile(){
+  wizState.file=null;wizState.workbook=null;wizState.sheetMaps=[];
+  wizardRenderStep1();
+}
+function wizardSetSheetMedium(i,med){
+  wizState.sheetMaps[i].medium=med;
+  var row=document.getElementById('wsp-'+i);
+  if(row){
+    if(med==='skip'||!med)row.classList.add('skip');else row.classList.remove('skip');
+  }
+  wizardUpdateNextButton();
+}
+function wizardApplySuggestions(){
+  wizState.sheetMaps.forEach(function(sm){
+    var n=sm.name.toLowerCase();
+    var sug=null;
+    if(n.indexOf('elektro')>=0)sug='el';
+    else if(n.indexOf('vodom')>=0||n.match(/\bvoda\b/))sug='water';
+    else if(n.indexOf('kalor')>=0||n.indexOf('teplo')>=0)sug='heat';
+    else if(n.indexOf('plyn')>=0)sug='gas';
+    else if(n.indexOf('chlaz')>=0)sug='cool';
+    if(sug&&(!sm.medium||sm.medium==='skip'))sm.medium=sug;
+  });
+  wizardRenderStep1();
+}
+function wizardUpdateNextButton(){
+  var btn=document.getElementById('wiz-next');
+  if(wizState.step===1){
+    btn.disabled=!wizState.workbook;
+    if(wizState.workbook){
+      var any=wizState.sheetMaps.filter(function(s){return s.medium&&s.medium!=='skip';});
+      btn.disabled=any.length===0;
+    }
+    btn.textContent='Pokračovat →';
+  } else if(wizState.step===4){
+    btn.textContent='💾 Uložit do cloudu';
+  } else {
+    btn.textContent='Pokračovat →';
+    btn.disabled=false;
+  }
+}
+function wizardHandleFile(file){
+  if(!file)return;
+  if(!file.name.match(/\.xlsx?$/i)){alert('Vyberte .xlsx nebo .xls soubor.');return;}
+  wizState.file=file;
+  wizardRenderStep1();
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var data=new Uint8Array(e.target.result);
+      wizState.workbook=XLSX.read(data,{type:'array',cellDates:false});
+      wizState.sheetMaps=wizState.workbook.SheetNames.map(function(name){
+        var ws=wizState.workbook.Sheets[name];
+        var ref=ws['!ref'];
+        var range=ref?XLSX.utils.decode_range(ref):{s:{r:0,c:0},e:{r:0,c:0}};
+        return {name:name,medium:null,year:2026,rowCount:range.e.r+1,headerRow:-1,tenantCol:-1,monthCols:{}};
+      });
+      wizardRenderStep1();
+    } catch(err){
+      console.error(err);
+      alert('Nepodařilo se načíst soubor: '+err.message);
+      wizState.file=null;wizState.workbook=null;
+      wizardRenderStep1();
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+var MONTH_NAMES_CZ=['leden','únor','březen','duben','květen','červen','červenec','srpen','září','říjen','listopad','prosinec'];
+var MONTH_NUMS=['01','02','03','04','05','06','07','08','09','10','11','12'];
+function detectMapping(sheet){
+  var ws=wizState.workbook.Sheets[sheet.name];
+  var range=XLSX.utils.decode_range(ws['!ref']);
+  var maxR=Math.min(range.e.r,15);
+  var maxC=range.e.c;
+  
+  // Step 1: Najít hlavičkový řádek - ten s nejvíc "Odečet" + "spotřeba" + případně "Nájemce"
+  var bestRow=-1, bestScore=0;
+  for(var r=range.s.r;r<=maxR;r++){
+    var score=0;
+    for(var c=range.s.c;c<=maxC;c++){
+      var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
+      if(cell&&cell.v){
+        var v=String(cell.v).toLowerCase();
+        if(v.indexOf('odečet')>=0)score++;
+        if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0)score++;
+      }
+    }
+    if(score>bestScore){bestScore=score;bestRow=r;}
+  }
+  
+  var headerRow=bestRow;
+  var tenantCol=-1;
+  
+  // Step 2: V tomto řádku najdi sloupec s přesným "Nájemce" (ne "Nájemce/Tenant" merged)
+  if(headerRow>=0){
+    // Nejdřív zkus přesný match
+    for(var c=range.s.c;c<=maxC;c++){
+      var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
+      if(cell&&cell.v){
+        var v=String(cell.v).toLowerCase().trim();
+        if(v==='nájemce'||v==='najemce'||v==='tenant'){
+          tenantCol=c;break;
+        }
+      }
+    }
+    // Fallback: cokoliv obsahující nájemce/tenant
+    if(tenantCol<0){
+      for(var c=range.s.c;c<=maxC;c++){
+        var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
+        if(cell&&cell.v){
+          var v=String(cell.v).toLowerCase();
+          if(v.indexOf('nájemce')>=0||v.indexOf('najemce')>=0||v.indexOf('tenant')>=0){
+            tenantCol=c;break;
+          }
+        }
+      }
+    }
+  }
+  
+  // Step 3: Měsíce - hledej "spotřeba" sloupce a mapuj na měsíc dle MM/YYYY v sousedním "Odečet" sloupci
+  var monthCols={};
+  if(headerRow>=0){
+    for(var c=range.s.c;c<=maxC;c++){
+      var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
+      if(cell&&cell.v){
+        var v=String(cell.v).toLowerCase();
+        if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0){
+          // Najdi nejbližší předchozí "Odečet" sloupec (max 4 zpět)
+          for(var lc=c-1;lc>=Math.max(0,c-4);lc--){
+            var ocell=ws[XLSX.utils.encode_cell({r:headerRow,c:lc})];
+            if(ocell&&ocell.v){
+              var ov=String(ocell.v).toLowerCase();
+              if(ov.indexOf('odečet')>=0){
+                // Extrahuj MM/YYYY - to je nejspolehlivější
+                var match=ov.match(/(\d{2})\/(\d{4})/);
+                if(match){
+                  var mm=parseInt(match[1])-1, yy=parseInt(match[2]);
+                  if(yy===sheet.year&&mm>=0&&mm<12){
+                    monthCols[mm]=c;
+                  }
+                } else {
+                  // Fallback: matching dle názvu měsíce (longer first to avoid červen/červenec collision)
+                  var found=false;
+                  var orderedMonths=MONTH_NAMES_CZ.map(function(m,i){return {m:m,i:i};}).sort(function(a,b){return b.m.length-a.m.length;});
+                  for(var k=0;k<orderedMonths.length&&!found;k++){
+                    var mn=orderedMonths[k].m, mi=orderedMonths[k].i;
+                    if(ov.indexOf(mn)>=0&&ov.indexOf(String(sheet.year))>=0){
+                      monthCols[mi]=c;found=true;
+                    }
+                  }
+                  // Ještě fallback: zkus řádek nad header (merged month names)
+                  if(!found){
+                    for(var rr=Math.max(0,headerRow-2);rr<headerRow&&!found;rr++){
+                      var acell=ws[XLSX.utils.encode_cell({r:rr,c:lc})]||ws[XLSX.utils.encode_cell({r:rr,c:c})];
+                      if(acell&&acell.v){
+                        var av=String(acell.v).toLowerCase();
+                        for(var k=0;k<orderedMonths.length&&!found;k++){
+                          var mn=orderedMonths[k].m, mi=orderedMonths[k].i;
+                          if(av.indexOf(mn)>=0&&av.indexOf(String(sheet.year))>=0){
+                            monthCols[mi]=c;found=true;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return {headerRow:headerRow,tenantCol:tenantCol,monthCols:monthCols};
+}
+
+function wizardRenderStep2(){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  if(!sheet){wizardSetStep(3);wizardRenderStep3();return;}
+  if(sheet.headerRow<0){
+    var det=detectMapping(sheet);
+    sheet.headerRow=det.headerRow;
+    sheet.tenantCol=det.tenantCol;
+    sheet.monthCols=det.monthCols;
+  }
+  var medLabel={el:'⚡ Elektřina',heat:'🔥 Teplo',cool:'❄ Chlazení',gas:'🔥 Plyn',water:'💧 Voda'}[sheet.medium];
+  var body=document.getElementById('wiz-body');
+  var ws=wizState.workbook.Sheets[sheet.name];
+  var range=XLSX.utils.decode_range(ws['!ref']);
+  var maxR=Math.min(range.e.r,Math.max(15,sheet.headerRow+3));
+  var maxC=Math.min(range.e.c,35);
+  var activeSheets=wizState.sheetMaps.filter(function(s){return s.medium&&s.medium!=='skip';});
+  var posInActive=activeSheets.findIndex(function(s){return s.name===sheet.name;})+1;
+  
+  var html='<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:8px">'+
+    '<div><b style="font-size:13px;color:var(--navy)">Sheet:</b> '+sheet.name+' &nbsp;·&nbsp; <b>Médium:</b> '+medLabel+' &nbsp;·&nbsp; <b>Rok:</b> '+sheet.year+'</div>'+
+    '<div style="font-size:11px;color:var(--gm)">Sheet '+posInActive+' z '+activeSheets.length+'</div>'+
+  '</div>';
+  
+  if(sheet.headerRow<0){
+    html+='<div class="wiz-err"><b>⚠ Hlavička sloupců nenalezena.</b> Wizard nenašel řádek se sloupcem "Nájemce" v prvních 15 řádcích. Tento sheet nebude importován. Kliknutím "Pokračovat →" přejdete na další sheet.</div>';
+  } else if(Object.keys(sheet.monthCols).length===0){
+    html+='<div class="wiz-err"><b>⚠ Měsíční sloupce nenalezeny.</b> Wizard nedetekoval žádné měsíce pro rok '+sheet.year+'. Možná je sheet jiného formátu nebo má jiný rok.</div>';
+  } else {
+    html+='<div class="wiz-success"><b>✓ Auto-detekce úspěšná:</b><br>'+
+      '• Hlavička v řádku <b>'+(sheet.headerRow+1)+'</b><br>'+
+      '• Nájemce v sloupci <b>'+colLetter(sheet.tenantCol)+'</b> (žlutě v náhledu)<br>'+
+      '• Měsíce ('+Object.keys(sheet.monthCols).length+'): '+
+        Object.keys(sheet.monthCols).sort(function(a,b){return parseInt(a)-parseInt(b);}).map(function(m){return MONTH_NAMES_CZ[m].substr(0,3)+'→'+colLetter(sheet.monthCols[m]);}).join(', ')+' (modře)'+
+    '</div>';
+  }
+  
+  html+='<div style="overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid var(--brd);border-radius:5px"><table class="wiz-table" style="margin:0">';
+  html+='<thead><tr><th style="background:#444;color:#fff;width:30px;position:sticky;left:0">#</th>';
+  for(var c=range.s.c;c<=maxC;c++){
+    var classes='';
+    if(c===sheet.tenantCol)classes='wiz-col-tenant';
+    else if(Object.values(sheet.monthCols).indexOf(c)>=0)classes='wiz-col-hi';
+    html+='<th class="'+classes+'" style="min-width:80px">'+colLetter(c)+'</th>';
+  }
+  html+='</tr></thead><tbody>';
+  for(var r=range.s.r;r<=maxR;r++){
+    var rowStyle=(r===sheet.headerRow)?' style="background:#e8f5f5;font-weight:700"':'';
+    html+='<tr'+rowStyle+'><td style="background:#444;color:#fff;text-align:right;font-weight:700;position:sticky;left:0">'+(r+1)+'</td>';
+    for(var c=range.s.c;c<=maxC;c++){
+      var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
+      var val=cell?(cell.v===null||cell.v===undefined?'':cell.v):'';
+      if(typeof val==='number'){
+        val=Math.abs(val)<10?val.toFixed(2):val.toLocaleString('cs-CZ',{maximumFractionDigits:1});
+      }
+      val=String(val).substr(0,30);
+      var classes='';
+      if(c===sheet.tenantCol)classes='wiz-col-tenant';
+      else if(Object.values(sheet.monthCols).indexOf(c)>=0)classes='wiz-col-hi';
+      html+='<td class="'+classes+'">'+val+'</td>';
+    }
+    html+='</tr>';
+  }
+  html+='</tbody></table></div>';
+  
+  if(sheet.headerRow>=0){
+    html+='<div style="margin-top:12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'+
+      '<label style="font-size:11px;color:var(--gd);font-weight:600">Sloupec nájemce: <select class="wiz-input" onchange="wizardSetTenantCol('+wizState.currentSheet+',parseInt(this.value))">';
+    for(var c=range.s.c;c<=maxC;c++){
+      var hcell=ws[XLSX.utils.encode_cell({r:sheet.headerRow,c:c})];
+      var label=hcell?String(hcell.v||'').substr(0,20):'(prázdný)';
+      html+='<option value="'+c+'"'+(c===sheet.tenantCol?' selected':'')+'>Sl. '+colLetter(c)+' – '+label+'</option>';
+    }
+    html+='</select></label></div>';
+  }
+  body.innerHTML=html;
+  wizardUpdateNextButton();
+}
+function colLetter(c){
+  var s='';
+  c=c+1;
+  while(c>0){var r=(c-1)%26;s=String.fromCharCode(65+r)+s;c=Math.floor((c-1)/26);}
+  return s;
+}
+function wizardSetTenantCol(i,c){
+  wizState.sheetMaps[i].tenantCol=c;
+  wizardRenderStep2();
+}
+
+function aggregateAllSheets(){
+  var result={};
+  var stats={sheetsProcessed:0,tenantsFound:new Set(),rowsProcessed:0,warnings:[]};
+  wizState.sheetMaps.forEach(function(sheet){
+    if(!sheet.medium||sheet.medium==='skip')return;
+    if(sheet.headerRow<0||sheet.tenantCol<0){
+      stats.warnings.push('Sheet "'+sheet.name+'": přeskočen (chybí hlavička nebo nájemce)');
+      return;
+    }
+    if(Object.keys(sheet.monthCols).length===0){
+      stats.warnings.push('Sheet "'+sheet.name+'": přeskočen (žádné měsíční sloupce)');
+      return;
+    }
+    stats.sheetsProcessed++;
+    if(!result[sheet.medium])result[sheet.medium]={};
+    var ws=wizState.workbook.Sheets[sheet.name];
+    var range=XLSX.utils.decode_range(ws['!ref']);
+    for(var r=sheet.headerRow+1;r<=range.e.r;r++){
+      var tCell=ws[XLSX.utils.encode_cell({r:r,c:sheet.tenantCol})];
+      if(!tCell||!tCell.v)continue;
+      var tenantName=String(tCell.v).trim();
+      if(!tenantName)continue;
+      if(/^(celkem|suma|total|součet)/i.test(tenantName))continue;
+      var normalized=tenantName.replace(/\s*[-–]\s*(fakturační|podružný|fakturační\s+).*$/i,'').replace(/\s+/g,' ').trim();
+      stats.tenantsFound.add(normalized);
+      stats.rowsProcessed++;
+      if(!result[sheet.medium][normalized])result[sheet.medium][normalized]={};
+      for(var mi in sheet.monthCols){
+        var mCol=sheet.monthCols[mi];
+        var mCell=ws[XLSX.utils.encode_cell({r:r,c:mCol})];
+        if(mCell&&typeof mCell.v==='number'&&!isNaN(mCell.v)){
+          var miNum=parseInt(mi);
+          if(!(miNum in result[sheet.medium][normalized]))result[sheet.medium][normalized][miNum]=0;
+          result[sheet.medium][normalized][miNum]+=mCell.v;
+        }
+      }
+    }
+  });
+  return {data:result,stats:stats};
+}
+
+function wizardRenderStep3(){
+  var agg=aggregateAllSheets();
+  wizState.pendingData=agg.data;
+  var body=document.getElementById('wiz-body');
+  var html='';
+  var medLabels={el:'⚡ Elektřina (kWh)',heat:'🔥 Teplo (GJ)',cool:'❄ Chlazení (GJ)',gas:'🔥 Plyn (m³)',water:'💧 Voda (m³)'};
+  
+  html+='<div class="wiz-success"><b>📊 Souhrn importu:</b><br>'+
+    'Zpracováno sheetů: <b>'+agg.stats.sheetsProcessed+'</b> · '+
+    'Detekováno nájemců: <b>'+agg.stats.tenantsFound.size+'</b> · '+
+    'Datových řádků: <b>'+agg.stats.rowsProcessed+'</b>'+
+  '</div>';
+  if(agg.stats.warnings.length){
+    html+='<div class="wiz-warn"><b>⚠ Varování:</b><br>'+agg.stats.warnings.join('<br>')+'</div>';
+  }
+  if(Object.keys(agg.data).length===0){
+    html+='<div class="wiz-err">Žádná data k importu. Vraťte se a zkontrolujte mapování.</div>';
+  } else {
+    Object.keys(agg.data).forEach(function(med){
+      var tenants=agg.data[med];
+      var tNames=Object.keys(tenants);
+      var sheetYear=(wizState.sheetMaps.find(function(s){return s.medium===med;})||{}).year||2026;
+      html+='<div style="margin-top:14px"><b style="color:var(--navy);font-size:13px">'+medLabels[med]+'</b> &nbsp;<span style="font-size:10px;color:var(--gm)">rok '+sheetYear+', '+tNames.length+' nájemců</span></div>';
+      html+='<div style="overflow-x:auto;border:1px solid var(--brd);border-radius:5px;margin-top:4px"><table class="wiz-table" style="margin:0">';
+      html+='<thead><tr><th style="text-align:left;min-width:140px">Nájemce</th>';
+      for(var mi=0;mi<12;mi++)html+='<th style="min-width:55px">'+MONTH_NAMES_CZ[mi].substr(0,3)+'</th>';
+      html+='<th style="min-width:65px;background:#e8f5f5;color:var(--teal)">Σ rok</th></tr></thead><tbody>';
+      tNames.sort(function(a,b){
+        var sa=0,sb=0;for(var mi in tenants[a])sa+=tenants[a][mi];for(var mi in tenants[b])sb+=tenants[b][mi];
+        return sb-sa;
+      });
+      tNames.slice(0,15).forEach(function(t){
+        html+='<tr class="tenant-row"><td>'+t+'</td>';
+        var sum=0;
+        for(var mi=0;mi<12;mi++){
+          var v=tenants[t][mi];
+          if(v!==undefined&&v!==null){
+            sum+=v;
+            html+='<td style="text-align:right">'+Math.round(v).toLocaleString('cs-CZ')+'</td>';
+          } else {
+            html+='<td style="text-align:right;color:var(--gl)">—</td>';
+          }
+        }
+        html+='<td style="text-align:right;background:#f4faf6;font-weight:700">'+Math.round(sum).toLocaleString('cs-CZ')+'</td></tr>';
+      });
+      if(tNames.length>15)html+='<tr><td colspan="14" style="text-align:center;font-size:10px;color:var(--gm);font-style:italic">+ dalších '+(tNames.length-15)+' nájemců</td></tr>';
+      html+='</tbody></table></div>';
+    });
+  }
+  body.innerHTML=html;
+  wizardUpdateNextButton();
+}
+
+function wizardRenderStep4(){
+  var body=document.getElementById('wiz-body');
+  var o=OBJ[wizState.objIdx];
+  var html='<div class="wiz-info"><b>⚠ Před uložením zkontrolujte:</b><br>'+
+    '• Importovaná data <b>přepíšou</b> stávající hodnoty pro vybrané měsíce a média.<br>'+
+    '• Ostatní měsíce a média zůstanou beze změny.<br>'+
+    '• Nájemci kteří v objektu zatím nejsou, budou automaticky přidáni.'+
+  '</div>';
+  var existingTenants=new Set();
+  ['el','heat','cool','gas','water'].forEach(function(m){
+    if(o.tenants&&o.tenants[m])Object.keys(o.tenants[m]).forEach(function(t){existingTenants.add(t);});
+  });
+  var newTenants=[],matchedTenants=[];
+  Object.keys(wizState.pendingData||{}).forEach(function(med){
+    Object.keys(wizState.pendingData[med]).forEach(function(t){
+      if(existingTenants.has(t))matchedTenants.push(t);
+      else newTenants.push(t);
+    });
+  });
+  newTenants=Array.from(new Set(newTenants));
+  matchedTenants=Array.from(new Set(matchedTenants));
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">';
+  html+='<div class="wiz-success"><b>✓ Známí nájemci ('+matchedTenants.length+')</b><br><span style="font-size:10px">'+
+    (matchedTenants.length?matchedTenants.slice(0,10).join(', ')+(matchedTenants.length>10?', ...':''):'<i>žádní</i>')+'</span></div>';
+  html+='<div class="wiz-warn"><b>+ Noví nájemci ('+newTenants.length+')</b><br><span style="font-size:10px">'+
+    (newTenants.length?newTenants.slice(0,10).join(', ')+(newTenants.length>10?', ...':''):'<i>žádní</i>')+'</span></div>';
+  html+='</div>';
+  html+='<div style="margin-top:14px;padding:12px;background:var(--gbg);border-radius:5px">'+
+    '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:12px">'+
+      '<input type="checkbox" id="wiz-confirm" onchange="document.getElementById(\'wiz-next\').disabled=!this.checked" style="margin-top:2px">'+
+      '<span><b>Potvrzuji import.</b> Rozumím tomu, že importované hodnoty přepíšou stávající data pro vybrané měsíce. Beru na vědomí, že akce zapíše do cloudu (Firestore).</span>'+
+    '</label>'+
+  '</div>';
+  body.innerHTML=html;
+  var btn=document.getElementById('wiz-next');
+  btn.textContent='💾 Uložit do cloudu';
+  btn.disabled=true;
+}
+
+async function wizardCommit(){
+  var o=OBJ[wizState.objIdx];
+  if(!o)return;
+  var btn=document.getElementById('wiz-next');
+  btn.disabled=true;btn.textContent='⟳ Ukládání...';
+  try{
+    if(!o.tenants)o.tenants={el:{},heat:{},cool:{},gas:{},water:{}};
+    Object.keys(wizState.pendingData).forEach(function(med){
+      if(!o.tenants[med])o.tenants[med]={};
+      var sheetYear=(wizState.sheetMaps.find(function(s){return s.medium===med;})||{}).year||2026;
+      var dKey=sheetYear===2025?'d25':'d26';
+      Object.keys(wizState.pendingData[med]).forEach(function(t){
+        if(!o.tenants[med][t])o.tenants[med][t]={d25:Array(12).fill(0),d26:Array(12).fill(0)};
+        if(!o.tenants[med][t].d25)o.tenants[med][t].d25=Array(12).fill(0);
+        if(!o.tenants[med][t].d26)o.tenants[med][t].d26=Array(12).fill(0);
+        var monthVals=wizState.pendingData[med][t];
+        Object.keys(monthVals).forEach(function(mi){
+          o.tenants[med][t][dKey][parseInt(mi)]=monthVals[mi];
+        });
+      });
+    });
+    o.pos=new Date().toLocaleDateString('cs-CZ',{month:'2-digit',year:'numeric'}).replace(' ','/');
+    o.st='ok';
+    await fbDB.collection('objects').doc(o.id).set(deepClean(o));
+    setSyncStatus('synced');
+    var rowsCount=0;
+    Object.keys(wizState.pendingData).forEach(function(m){
+      Object.keys(wizState.pendingData[m]).forEach(function(t){
+        rowsCount+=Object.keys(wizState.pendingData[m][t]).length;
+      });
+    });
+    var savedObjIdx=wizState.objIdx;
+    var body=document.getElementById('wiz-body');
+    body.innerHTML='<div style="text-align:center;padding:30px 20px">'+
+      '<div style="font-size:60px;color:var(--green);margin-bottom:14px">✓</div>'+
+      '<div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:6px">Import dokončen</div>'+
+      '<div style="font-size:12px;color:var(--gm)">Uloženo '+rowsCount+' hodnot do cloudu</div>'+
+      '<button class="btn-p" onclick="closeWizardAndOpenDetail('+savedObjIdx+')" style="margin-top:18px">Zavřít a zobrazit detail</button>'+
+    '</div>';
+    document.querySelector('.wiz-foot').style.display='none';
+  } catch(e){
+    console.error('Wizard commit failed:',e);
+    setSyncStatus('error');
+    alert('Uložení selhalo: '+e.message);
+    btn.disabled=false;btn.textContent='💾 Uložit do cloudu';
+  }
+}
+function closeWizardAndOpenDetail(idx){
+  document.getElementById('wiz-overlay').classList.remove('active');
+  document.querySelector('.wiz-foot').style.display='';
+  wizState={objIdx:-1,file:null,workbook:null,sheetMaps:[],currentSheet:-1,step:1,pendingData:null};
+  if(typeof openDetail==='function')openDetail(idx);
 }
 
 renderP();
