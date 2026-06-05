@@ -3042,8 +3042,9 @@ function wizardRenderStep1(){
       html+='<div style="margin-top:8px">';
       html+='<div style="display:grid;grid-template-columns:1fr 200px 110px 70px;gap:8px;padding:4px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--gl);font-weight:700"><div>Sheet</div><div>Médium</div><div>Rok</div><div>Řádky</div></div>';
       wizState.sheetMaps.forEach(function(sm,i){
+        var displayName=sm.name+(sm._sectionLabel?' :: '+sm._sectionLabel:'');
         html+='<div class="wiz-sheet-pick'+(sm.medium==='skip'||!sm.medium?' skip':'')+'" id="wsp-'+i+'" style="grid-template-columns:1fr 200px 110px 70px">'+
-          '<div><div class="sn">'+sm.name+'</div></div>'+
+          '<div><div class="sn">'+displayName+'</div></div>'+
           '<select class="wiz-input" onchange="wizardSetSheetMedium('+i+',this.value)">'+
             '<option value="skip"'+(sm.medium==='skip'||!sm.medium?' selected':'')+'>— Přeskočit —</option>'+
             '<option value="el"'+(sm.medium==='el'?' selected':'')+'>⚡ Elektřina (kWh)</option>'+
@@ -3056,8 +3057,21 @@ function wizardRenderStep1(){
             '<option value="2026"'+(sm.year===2026?' selected':'')+'>2026</option>'+
             '<option value="2025"'+(sm.year===2025?' selected':'')+'>2025 (ref)</option>'+
           '</select>'+
-          '<div style="font-size:11px;color:var(--gm)">'+sm.rowCount+'</div>'+
+          '<div style="font-size:11px;color:var(--gm)">'+sm.rowCount+(sm._isCopy?' <button class="btn-i" onclick="wizardRemoveCopy('+i+')" style="font-size:10px;padding:1px 5px;color:#c0392b;border:none;background:transparent" title="Smazat tuto kopii">×</button>':'')+'</div>'+
         '</div>';
+      });
+      html+='</div>';
+      // "Přidat sekci" tlačítko - duplikuje vybraný sheet
+      html+='<div style="margin-top:10px;font-size:11px;color:var(--gm)">Pokud má sheet více médií v jednom listu (např. HCEWG), můžete přidat duplikát pro každé médium:</div>'+
+        '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">';
+      // Show "duplicate" buttons for sheets without duplicates yet
+      var seenSheetNames={};
+      wizState.sheetMaps.forEach(function(sm){
+        if(seenSheetNames[sm.name])return;
+        seenSheetNames[sm.name]=true;
+        if(sm.medium&&sm.medium!=='skip'){
+          html+='<button class="btn-i" onclick="wizardDuplicateSheet(\''+sm.name.replace(/'/g,"\\'")+'\')" style="font-size:10px;padding:3px 8px">+ Přidat další sekci pro "'+sm.name+'"</button>';
+        }
       });
       html+='</div>';
       var suggested=[];
@@ -3110,6 +3124,33 @@ function wizardApplySuggestions(){
     else if(n.indexOf('plyn')>=0||n.indexOf('gas')>=0)sug='gas';
     if(sug&&(!sm.medium||sm.medium==='skip'))sm.medium=sug;
   });
+  wizardRenderStep1();
+}
+function wizardDuplicateSheet(sheetName){
+  // Najdi originální sheet
+  var original=wizState.sheetMaps.find(function(s){return s.name===sheetName;});
+  if(!original)return;
+  var copy={
+    name:original.name,
+    medium:null,
+    year:original.year||2026,
+    rowCount:original.rowCount,
+    headerRow:-1,tenantCol:-1,monthCols:{},
+    startRow:-1,endRow:-1,
+    mode:'delta',dateMap:{},
+    _isCopy:true
+  };
+  // Najdi index posledního výskytu sheetu (přidávat kopie hned za originál a další kopie)
+  var lastIdx=-1;
+  wizState.sheetMaps.forEach(function(s,i){if(s.name===sheetName)lastIdx=i;});
+  wizState.sheetMaps.splice(lastIdx+1,0,copy);
+  wizardRenderStep1();
+}
+function wizardRemoveCopy(idx){
+  var sm=wizState.sheetMaps[idx];
+  if(!sm||!sm._isCopy)return;
+  if(!confirm('Smazat tuto kopii sheetu? '+sm.name))return;
+  wizState.sheetMaps.splice(idx,1);
   wizardRenderStep1();
 }
 function wizardUpdateNextButton(){
@@ -3561,11 +3602,13 @@ function wizardReDetect(){
 }
 function wizardSelectSection(row){
   var sheet=wizState.sheetMaps[wizState.currentSheet];
+  // Najdi sekci v detectSections aby získám její medium
+  var sections=detectSections(sheet);
+  var pickedSection=sections.find(function(s){return s.row===row;});
   // Set headerRow to this section's header (first row after section title with "Tenant"/"Description")
-  // Detect header row within this section
   var ws=wizState.workbook.Sheets[sheet.name];
   var sectRange=XLSX.utils.decode_range(ws['!ref']);
-  // Find header in next 5 rows
+  // Find header in next 8 rows
   var newHeader=-1;
   for(var r=row+1;r<=Math.min(row+8,sectRange.e.r);r++){
     for(var c=sectRange.s.c;c<=Math.min(sectRange.e.c,30);c++){
@@ -3584,10 +3627,13 @@ function wizardSelectSection(row){
     sheet.headerRow=newHeader;
     sheet.startRow=newHeader+1;
     // Find end of section (next section header or end of sheet)
-    var sections=detectSections(sheet);
     var nextSection=sections.find(function(s){return s.row>newHeader;});
     sheet.endRow=nextSection?nextSection.row-1:-1;
-    // Reset monthCols and re-detect for new header
+    // KLÍČOVÉ: změnit médium dle sekce
+    if(pickedSection&&pickedSection.medium){
+      sheet.medium=pickedSection.medium;
+    }
+    // Reset monthCols a re-detect pro novou hlavičku
     var det=detectMapping(sheet);
     if(det.headerRow===newHeader){
       sheet.tenantCol=det.tenantCol;
