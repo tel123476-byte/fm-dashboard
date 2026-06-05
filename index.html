@@ -3064,11 +3064,11 @@ function wizardRenderStep1(){
       wizState.sheetMaps.forEach(function(sm,i){
         var n=sm.name.toLowerCase();
         var sug='';
-        if(n.indexOf('elektro')>=0)sug='el';
-        else if(n.indexOf('vodom')>=0||n.match(/\bvoda\b/))sug='water';
-        else if(n.indexOf('kalor')>=0||n.indexOf('teplo')>=0)sug='heat';
-        else if(n.indexOf('plyn')>=0)sug='gas';
-        else if(n.indexOf('chlaz')>=0)sug='cool';
+        if(n.indexOf('elektro')>=0||n.indexOf('electricity')>=0||n.indexOf('electric')>=0||n.indexOf('elm')>=0)sug='el';
+        else if(n.indexOf('vodom')>=0||n.indexOf('water')>=0||n.match(/\bvoda\b/))sug='water';
+        else if(n.indexOf('chlaz')>=0||n.indexOf('cooling')>=0||n.indexOf('chl ')>=0||n.indexOf('cooling cal')>=0)sug='cool';
+        else if(n.indexOf('kalor')>=0||n.indexOf('teplo')>=0||n.indexOf('heating')>=0||n.indexOf('heat ')>=0||n.indexOf('heat\t')>=0)sug='heat';
+        else if(n.indexOf('plyn')>=0||n.indexOf('gas')>=0)sug='gas';
         if(sug&&(!sm.medium||sm.medium==='skip'))suggested.push({i:i,name:sm.name,sug:sug});
       });
       if(suggested.length>0){
@@ -3103,11 +3103,11 @@ function wizardApplySuggestions(){
   wizState.sheetMaps.forEach(function(sm){
     var n=sm.name.toLowerCase();
     var sug=null;
-    if(n.indexOf('elektro')>=0)sug='el';
-    else if(n.indexOf('vodom')>=0||n.match(/\bvoda\b/))sug='water';
-    else if(n.indexOf('kalor')>=0||n.indexOf('teplo')>=0)sug='heat';
-    else if(n.indexOf('plyn')>=0)sug='gas';
-    else if(n.indexOf('chlaz')>=0)sug='cool';
+    if(n.indexOf('elektro')>=0||n.indexOf('electricity')>=0||n.indexOf('electric')>=0||n.indexOf('elm')>=0)sug='el';
+    else if(n.indexOf('vodom')>=0||n.indexOf('water')>=0||n.match(/\bvoda\b/))sug='water';
+    else if(n.indexOf('chlaz')>=0||n.indexOf('cooling')>=0||n.indexOf('cooling cal')>=0)sug='cool';
+    else if(n.indexOf('kalor')>=0||n.indexOf('teplo')>=0||n.indexOf('heating')>=0)sug='heat';
+    else if(n.indexOf('plyn')>=0||n.indexOf('gas')>=0)sug='gas';
     if(sug&&(!sm.medium||sm.medium==='skip'))sm.medium=sug;
   });
   wizardRenderStep1();
@@ -3137,12 +3137,12 @@ function wizardHandleFile(file){
   reader.onload=function(e){
     try{
       var data=new Uint8Array(e.target.result);
-      wizState.workbook=XLSX.read(data,{type:'array',cellDates:false});
+      wizState.workbook=XLSX.read(data,{type:'array',cellDates:true});
       wizState.sheetMaps=wizState.workbook.SheetNames.map(function(name){
         var ws=wizState.workbook.Sheets[name];
         var ref=ws['!ref'];
         var range=ref?XLSX.utils.decode_range(ref):{s:{r:0,c:0},e:{r:0,c:0}};
-        return {name:name,medium:null,year:2026,rowCount:range.e.r+1,headerRow:-1,tenantCol:-1,monthCols:{}};
+        return {name:name,medium:null,year:2026,rowCount:range.e.r+1,headerRow:-1,tenantCol:-1,monthCols:{},startRow:-1,endRow:-1,mode:'delta',dateMap:{}};
       });
       wizardRenderStep1();
     } catch(err){
@@ -3156,23 +3156,42 @@ function wizardHandleFile(file){
 }
 
 var MONTH_NAMES_CZ=['leden','únor','březen','duben','květen','červen','červenec','srpen','září','říjen','listopad','prosinec'];
+var MONTH_NAMES_EN=['january','february','march','april','may','june','july','august','september','october','november','december'];
 var MONTH_NUMS=['01','02','03','04','05','06','07','08','09','10','11','12'];
+var TENANT_KEYWORDS=['nájemce','najemce','tenant','description','customer','popis','jméno','jmeno'];
+var TENANT_EXACT=['nájemce','najemce','tenant'];
+
 function detectMapping(sheet){
   var ws=wizState.workbook.Sheets[sheet.name];
   var range=XLSX.utils.decode_range(ws['!ref']);
-  var maxR=Math.min(range.e.r,15);
+  var maxR=Math.min(range.e.r,25);
   var maxC=range.e.c;
   
-  // Step 1: Najít hlavičkový řádek - ten s nejvíc "Odečet" + "spotřeba" + případně "Nájemce"
+  // Step 1: Najít hlavičkový řádek - skóre podle počtu klíčových slov a dat
   var bestRow=-1, bestScore=0;
   for(var r=range.s.r;r<=maxR;r++){
-    var score=0;
+    var score=0, hasTenantWord=false, dateCount=0;
     for(var c=range.s.c;c<=maxC;c++){
       var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
-      if(cell&&cell.v){
-        var v=String(cell.v).toLowerCase();
-        if(v.indexOf('odečet')>=0)score++;
-        if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0)score++;
+      if(!cell||cell.v===null||cell.v===undefined)continue;
+      // Date object?
+      if(cell.t==='d'||(cell.v instanceof Date)){
+        dateCount++;score++;
+        continue;
+      }
+      var v=String(cell.v).toLowerCase();
+      // Tenant keyword
+      for(var k=0;k<TENANT_KEYWORDS.length;k++){
+        if(v.indexOf(TENANT_KEYWORDS[k])>=0){hasTenantWord=true;score+=3;break;}
+      }
+      // Reading/consumption keywords
+      if(v.indexOf('odečet')>=0||v.indexOf('reading')>=0)score++;
+      if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0||v.indexOf('consumption')>=0)score+=2;
+      // Structural keywords
+      if(v.indexOf('floor')>=0||v.indexOf('position')>=0||v.indexOf('podlaží')>=0||v.indexOf('podlazi')>=0||v.indexOf('m-bus')>=0||v.indexOf('meter')>=0)score++;
+      // Month name + year
+      for(var mi=0;mi<12;mi++){
+        if((v.indexOf(MONTH_NAMES_CZ[mi])>=0||v.indexOf(MONTH_NAMES_EN[mi])>=0)&&v.indexOf(String(sheet.year))>=0){score++;break;}
       }
     }
     if(score>bestScore){bestScore=score;bestRow=r;}
@@ -3181,80 +3200,112 @@ function detectMapping(sheet){
   var headerRow=bestRow;
   var tenantCol=-1;
   
-  // Step 2: V tomto řádku najdi sloupec s přesným "Nájemce" (ne "Nájemce/Tenant" merged)
+  // Step 2: V hlavičce najdi sloupec s "Nájemce"/"Tenant" - exact match first
   if(headerRow>=0){
-    // Nejdřív zkus přesný match
     for(var c=range.s.c;c<=maxC;c++){
       var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
       if(cell&&cell.v){
         var v=String(cell.v).toLowerCase().trim();
-        if(v==='nájemce'||v==='najemce'||v==='tenant'){
-          tenantCol=c;break;
+        for(var k=0;k<TENANT_EXACT.length;k++){
+          if(v===TENANT_EXACT[k]||v.startsWith(TENANT_EXACT[k]+' ')||v.startsWith(TENANT_EXACT[k]+'/')){
+            tenantCol=c;break;
+          }
         }
+        if(tenantCol>=0)break;
       }
     }
-    // Fallback: cokoliv obsahující nájemce/tenant
+    // Fallback: any cell with tenant keyword
     if(tenantCol<0){
       for(var c=range.s.c;c<=maxC;c++){
         var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
         if(cell&&cell.v){
           var v=String(cell.v).toLowerCase();
-          if(v.indexOf('nájemce')>=0||v.indexOf('najemce')>=0||v.indexOf('tenant')>=0){
-            tenantCol=c;break;
+          for(var k=0;k<TENANT_KEYWORDS.length;k++){
+            if(v.indexOf(TENANT_KEYWORDS[k])>=0){tenantCol=c;break;}
           }
+          if(tenantCol>=0)break;
         }
       }
     }
   }
   
-  // Step 3: Měsíce - hledej "spotřeba" sloupce a mapuj na měsíc dle MM/YYYY v sousedním "Odečet" sloupci
+  // Step 3: Měsíční sloupce - dvě cesty
+  // Cesta A (Cumulative): Date objekty v hlavičce = stav měřáku k danému datu
+  // Cesta B (Delta): "spotřeba" sloupec + "Odečet za MM/YYYY"
   var monthCols={};
+  var dateMap={}; // 'YYYY-MM' -> col index (pro lookup předchozího měsíce u cumulative)
+  var mode='delta'; // default
+  var dateColCount=0;
+  
   if(headerRow>=0){
+    // Cesta A: Date objekty
     for(var c=range.s.c;c<=maxC;c++){
       var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
-      if(cell&&cell.v){
-        var v=String(cell.v).toLowerCase();
-        if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0){
-          // Najdi nejbližší předchozí "Odečet" sloupec (max 4 zpět)
-          for(var lc=c-1;lc>=Math.max(0,c-4);lc--){
-            var ocell=ws[XLSX.utils.encode_cell({r:headerRow,c:lc})];
-            if(ocell&&ocell.v){
-              var ov=String(ocell.v).toLowerCase();
-              if(ov.indexOf('odečet')>=0){
-                // Extrahuj MM/YYYY - to je nejspolehlivější
-                var match=ov.match(/(\d{2})\/(\d{4})/);
-                if(match){
-                  var mm=parseInt(match[1])-1, yy=parseInt(match[2]);
-                  if(yy===sheet.year&&mm>=0&&mm<12){
-                    monthCols[mm]=c;
-                  }
-                } else {
-                  // Fallback: matching dle názvu měsíce (longer first to avoid červen/červenec collision)
-                  var found=false;
-                  var orderedMonths=MONTH_NAMES_CZ.map(function(m,i){return {m:m,i:i};}).sort(function(a,b){return b.m.length-a.m.length;});
-                  for(var k=0;k<orderedMonths.length&&!found;k++){
-                    var mn=orderedMonths[k].m, mi=orderedMonths[k].i;
-                    if(ov.indexOf(mn)>=0&&ov.indexOf(String(sheet.year))>=0){
-                      monthCols[mi]=c;found=true;
+      if(cell&&(cell.t==='d'||(cell.v instanceof Date))){
+        var d=cell.v instanceof Date?cell.v:new Date(cell.v);
+        if(!isNaN(d.getTime())){
+          var y=d.getFullYear(), m=d.getMonth();
+          dateMap[y+'-'+m]=c;
+          dateColCount++;
+          // Pokud je to konec měsíce (cumulative readings), použij jako náš měsíc
+          var lastDay=new Date(y,m+1,0).getDate();
+          if(d.getDate()>=lastDay-2||d.getDate()===1){ // poslední den (~) nebo první den dalšího měsíce
+            if(y===sheet.year){
+              monthCols[m]=c;
+            }
+          }
+        }
+      }
+    }
+    if(dateColCount>=3)mode='cumulative';
+    
+    // Pokud date detekce neuspěla, zkus Cestu B (delta - "spotřeba" + "Odečet za MM/YYYY")
+    if(Object.keys(monthCols).length===0){
+      for(var c=range.s.c;c<=maxC;c++){
+        var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
+        if(cell&&cell.v){
+          var v=String(cell.v).toLowerCase();
+          if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0||v.indexOf('consumption')>=0){
+            // Najdi nejbližší předchozí "Odečet"/"Reading" sloupec
+            for(var lc=c-1;lc>=Math.max(0,c-4);lc--){
+              var ocell=ws[XLSX.utils.encode_cell({r:headerRow,c:lc})];
+              if(ocell&&ocell.v){
+                var ov=String(ocell.v).toLowerCase();
+                if(ov.indexOf('odečet')>=0||ov.indexOf('reading')>=0){
+                  var match=ov.match(/(\d{1,2})\/(\d{4})/);
+                  if(match){
+                    var mm=parseInt(match[1])-1, yy=parseInt(match[2]);
+                    if(yy===sheet.year&&mm>=0&&mm<12){
+                      monthCols[mm]=c;
                     }
-                  }
-                  // Ještě fallback: zkus řádek nad header (merged month names)
-                  if(!found){
-                    for(var rr=Math.max(0,headerRow-2);rr<headerRow&&!found;rr++){
-                      var acell=ws[XLSX.utils.encode_cell({r:rr,c:lc})]||ws[XLSX.utils.encode_cell({r:rr,c:c})];
-                      if(acell&&acell.v){
-                        var av=String(acell.v).toLowerCase();
-                        for(var k=0;k<orderedMonths.length&&!found;k++){
-                          var mn=orderedMonths[k].m, mi=orderedMonths[k].i;
-                          if(av.indexOf(mn)>=0&&av.indexOf(String(sheet.year))>=0){
-                            monthCols[mi]=c;found=true;
+                  } else {
+                    // Fallback: month name longer-first
+                    var found=false;
+                    var orderedMonths=MONTH_NAMES_CZ.map(function(m,i){return {m:m,i:i};}).concat(MONTH_NAMES_EN.map(function(m,i){return {m:m,i:i};})).sort(function(a,b){return b.m.length-a.m.length;});
+                    for(var k=0;k<orderedMonths.length&&!found;k++){
+                      var mn=orderedMonths[k].m, mi=orderedMonths[k].i;
+                      if(ov.indexOf(mn)>=0&&ov.indexOf(String(sheet.year))>=0){
+                        monthCols[mi]=c;found=true;
+                      }
+                    }
+                    // Zkus i řádek nad header (merged month names)
+                    if(!found){
+                      for(var rr=Math.max(0,headerRow-2);rr<headerRow&&!found;rr++){
+                        var acell=ws[XLSX.utils.encode_cell({r:rr,c:lc})]||ws[XLSX.utils.encode_cell({r:rr,c:c})];
+                        if(acell&&acell.v){
+                          var av=String(acell.v).toLowerCase();
+                          for(var k=0;k<orderedMonths.length&&!found;k++){
+                            var mn=orderedMonths[k].m, mi=orderedMonths[k].i;
+                            if(av.indexOf(mn)>=0&&av.indexOf(String(sheet.year))>=0){
+                              monthCols[mi]=c;found=true;
+                            }
                           }
                         }
                       }
                     }
                   }
+                  break;
                 }
-                break;
               }
             }
           }
@@ -3262,24 +3313,30 @@ function detectMapping(sheet){
       }
     }
   }
-  return {headerRow:headerRow,tenantCol:tenantCol,monthCols:monthCols};
+  return {headerRow:headerRow,tenantCol:tenantCol,monthCols:monthCols,mode:mode,dateMap:dateMap};
 }
 
 function wizardRenderStep2(){
   var sheet=wizState.sheetMaps[wizState.currentSheet];
   if(!sheet){wizardSetStep(3);wizardRenderStep3();return;}
-  if(sheet.headerRow<0){
+  // Run auto-detection on first visit only (preserve user overrides)
+  if(sheet.headerRow<0&&!sheet._detected){
     var det=detectMapping(sheet);
     sheet.headerRow=det.headerRow;
     sheet.tenantCol=det.tenantCol;
     sheet.monthCols=det.monthCols;
+    sheet.mode=det.mode||'delta';
+    sheet.dateMap=det.dateMap||{};
+    sheet._detected=true;
   }
+  if(!sheet.mode)sheet.mode='delta';
+  if(!sheet.dateMap)sheet.dateMap={};
   var medLabel={el:'⚡ Elektřina',heat:'🔥 Teplo',cool:'❄ Chlazení',gas:'🔥 Plyn',water:'💧 Voda'}[sheet.medium];
   var body=document.getElementById('wiz-body');
   var ws=wizState.workbook.Sheets[sheet.name];
   var range=XLSX.utils.decode_range(ws['!ref']);
-  var maxR=Math.min(range.e.r,Math.max(15,sheet.headerRow+3));
-  var maxC=Math.min(range.e.c,35);
+  var maxR=Math.min(range.e.r,Math.max(20,(sheet.headerRow||0)+3));
+  var maxC=Math.min(range.e.c,40);
   var activeSheets=wizState.sheetMaps.filter(function(s){return s.medium&&s.medium!=='skip';});
   var posInActive=activeSheets.findIndex(function(s){return s.name===sheet.name;})+1;
   
@@ -3288,25 +3345,113 @@ function wizardRenderStep2(){
     '<div style="font-size:11px;color:var(--gm)">Sheet '+posInActive+' z '+activeSheets.length+'</div>'+
   '</div>';
   
+  // Detekční status
   if(sheet.headerRow<0){
-    html+='<div class="wiz-err"><b>⚠ Hlavička sloupců nenalezena.</b> Wizard nenašel řádek se sloupcem "Nájemce" v prvních 15 řádcích. Tento sheet nebude importován. Kliknutím "Pokračovat →" přejdete na další sheet.</div>';
-  } else if(Object.keys(sheet.monthCols).length===0){
-    html+='<div class="wiz-err"><b>⚠ Měsíční sloupce nenalezeny.</b> Wizard nedetekoval žádné měsíce pro rok '+sheet.year+'. Možná je sheet jiného formátu nebo má jiný rok.</div>';
+    html+='<div class="wiz-warn"><b>⚠ Auto-detekce nenašla hlavičku.</b> Zadejte ručně číslo řádku, kde jsou v souboru názvy sloupců (Tenant, Description, Nájemce, atd.)</div>';
+  } else if(Object.keys(sheet.monthCols||{}).length===0){
+    html+='<div class="wiz-warn"><b>⚠ Měsíční sloupce nedetekovány.</b> Vyberte ručně níže pro každý měsíc sloupec se spotřebou.</div>';
   } else {
-    html+='<div class="wiz-success"><b>✓ Auto-detekce úspěšná:</b><br>'+
-      '• Hlavička v řádku <b>'+(sheet.headerRow+1)+'</b><br>'+
-      '• Nájemce v sloupci <b>'+colLetter(sheet.tenantCol)+'</b> (žlutě v náhledu)<br>'+
-      '• Měsíce ('+Object.keys(sheet.monthCols).length+'): '+
-        Object.keys(sheet.monthCols).sort(function(a,b){return parseInt(a)-parseInt(b);}).map(function(m){return MONTH_NAMES_CZ[m].substr(0,3)+'→'+colLetter(sheet.monthCols[m]);}).join(', ')+' (modře)'+
-    '</div>';
+    var modeLabel=sheet.mode==='cumulative'?'kumulativní stav měřáku (rozdíly se spočítají automaticky)':'měsíční spotřeba (delta hodnoty)';
+    html+='<div class="wiz-success"><b>✓ Auto-detekce:</b> Hlavička v řádku <b>'+(sheet.headerRow+1)+'</b>, Nájemce sl. <b>'+(sheet.tenantCol>=0?colLetter(sheet.tenantCol):'?')+'</b>, '+Object.keys(sheet.monthCols||{}).length+' měsíčních sloupců &nbsp;·&nbsp; režim: <b>'+modeLabel+'</b></div>';
   }
   
-  html+='<div style="overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid var(--brd);border-radius:5px"><table class="wiz-table" style="margin:0">';
-  html+='<thead><tr><th style="background:#444;color:#fff;width:30px;position:sticky;left:0">#</th>';
+  // Mode toggle - cumulative vs delta
+  html+='<div style="background:#f4f8fc;border:1px solid #b8d4e8;border-radius:6px;padding:10px 14px;margin:10px 0;font-size:12px">'+
+    '<b style="color:var(--navy)">Hodnoty ve sloupcích jsou:</b>&nbsp;'+
+    '<label style="margin-left:10px;cursor:pointer"><input type="radio" name="wiz-mode" value="delta"'+(sheet.mode==='delta'?' checked':'')+' onchange="wizardSetMode(\'delta\')"> Spotřeba (delta) – hodnota = spotřeba měsíce</label>&nbsp;&nbsp;'+
+    '<label style="cursor:pointer"><input type="radio" name="wiz-mode" value="cumulative"'+(sheet.mode==='cumulative'?' checked':'')+' onchange="wizardSetMode(\'cumulative\')"> Kumulativní stav měřáku – spotřeba = rozdíl mezi měsíci</label>'+
+    '<div style="font-size:10px;color:var(--gm);margin-top:4px"><i>'+(sheet.mode==='cumulative'?'Pro každý měsíc spočítáme: stav konce měsíce − stav konce předchozího měsíce. Pro leden 2026 se použije prosinec 2025 (musí být v souboru jako reference).':'Hodnota ve sloupci je přímo spotřeba měsíce – použijeme ji tak jak je.')+'</i></div>'+
+  '</div>';
+  
+  // Detekce sekcí - pokud sheet má víc sekcí (multi-medium sheet)
+  var sections=detectSections(sheet);
+  if(sections.length>1){
+    html+='<div class="wiz-info" style="margin:10px 0"><b>📑 Multi-section sheet detekován!</b> Sheet obsahuje '+sections.length+' sekcí s různými médii. Pro každé médium proveďte import samostatně. Klikněte na sekci níže pro nastavení rozsahu řádků:<br>'+
+      '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'+
+      sections.map(function(s){
+        var isActive=sheet.headerRow>=s.row&&sheet.headerRow<=s.row+10;
+        return '<button class="btn-i" onclick="wizardSelectSection('+s.row+')" style="font-size:10px;padding:4px 10px'+(isActive?';background:var(--teal);color:#fff':'')+'" title="'+s.text.replace(/"/g,'&quot;')+'">▸ '+s.label+' (ř. '+(s.row+1)+')</button>';
+      }).join('')+
+    '</div></div>';
+  }
+  
+  // Manuální nastavení - kompaktní řádek
+  html+='<div style="background:var(--gbg);border:1px solid var(--brd);border-radius:6px;padding:12px 14px;margin:10px 0">'+
+    '<div style="display:grid;grid-template-columns:auto 70px auto 1fr auto;gap:10px;align-items:center;font-size:11px;margin-bottom:8px">'+
+      '<label style="font-weight:600;color:var(--gd)">Hlavičkový řádek:</label>'+
+      '<input type="number" class="wiz-input" id="wiz-headerrow" min="1" max="50" value="'+(sheet.headerRow>=0?sheet.headerRow+1:1)+'" onchange="wizardSetHeaderRow(this.value)" style="width:70px">'+
+      '<label style="font-weight:600;color:var(--gd)">Sloupec nájemce:</label>'+
+      '<select class="wiz-input" id="wiz-tenantcol" onchange="wizardSetTenantCol('+wizState.currentSheet+',parseInt(this.value))">';
+  
+  if(sheet.headerRow>=0){
+    html+='<option value="-1"'+(sheet.tenantCol<0?' selected':'')+'>— Vyberte —</option>';
+    for(var c=range.s.c;c<=maxC;c++){
+      var hcell=ws[XLSX.utils.encode_cell({r:sheet.headerRow,c:c})];
+      var label=hcell&&hcell.v!==undefined&&hcell.v!==null?String(hcell.v).substr(0,25):'(bez názvu)';
+      if(hcell&&(hcell.t==='d'||(hcell.v instanceof Date))){
+        var d=hcell.v instanceof Date?hcell.v:new Date(hcell.v);
+        label='📅 '+(isNaN(d.getTime())?'?':d.toISOString().substr(0,10));
+      }
+      html+='<option value="'+c+'"'+(c===sheet.tenantCol?' selected':'')+'>Sl. '+colLetter(c)+' – '+label+'</option>';
+    }
+  } else {
+    html+='<option value="-1">— nejdřív zvolte hlavičku —</option>';
+  }
+  html+='</select>'+
+    '<button class="btn-i" onclick="wizardReDetect()" style="font-size:10px;padding:4px 10px" title="Spustí auto-detekci znovu">↻ Znovu detekovat</button>'+
+  '</div>'+
+  '<div style="display:grid;grid-template-columns:auto 80px auto 80px auto;gap:10px;align-items:center;font-size:11px">'+
+    '<label style="font-weight:600;color:var(--gd)">Rozsah řádků – od:</label>'+
+    '<input type="number" class="wiz-input" min="1" value="'+(sheet.startRow>=0?sheet.startRow+1:'')+'" placeholder="auto" onchange="wizardSetStartRow(this.value)" style="width:80px" title="První řádek s daty (defaultně = hlavička+1)">'+
+    '<label style="font-weight:600;color:var(--gd)">do:</label>'+
+    '<input type="number" class="wiz-input" min="1" value="'+(sheet.endRow>=0?sheet.endRow+1:'')+'" placeholder="auto" onchange="wizardSetEndRow(this.value)" style="width:80px" title="Poslední řádek (defaultně = konec sheetu). Důležité pro multi-section sheety.">'+
+    '<span style="font-size:10px;color:var(--gm)"><i>Volitelné – omezit import na konkrétní rozsah (např. jen sekce Heating ř. 9-120)</i></span>'+
+  '</div></div>';
+  
+  // Měsíční mapování - 12 dropdownů v gridu (jen pokud máme hlavičku)
+  if(sheet.headerRow>=0){
+    html+='<div style="background:#fafbfc;border:1px solid var(--brd);border-radius:6px;padding:12px 14px;margin:10px 0">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gd);margin-bottom:8px">▌ Měsíční sloupce ('+sheet.year+')'+(sheet.mode==='cumulative'?' – stav měřáku ke konci měsíce':'')+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:11px">';
+    for(var mi=0;mi<12;mi++){
+      var current=sheet.monthCols[mi];
+      html+='<div style="display:flex;align-items:center;gap:5px">'+
+        '<span style="font-weight:600;color:var(--gd);min-width:48px">'+MONTH_NAMES_CZ[mi].substr(0,3).charAt(0).toUpperCase()+MONTH_NAMES_CZ[mi].substr(1,2)+':</span>'+
+        '<select class="wiz-input" style="font-size:10px;padding:3px 4px;flex:1" onchange="wizardSetMonthCol('+mi+',this.value)">'+
+          '<option value="-1"'+(current===undefined?' selected':'')+'>— Není —</option>';
+      for(var c=range.s.c;c<=maxC;c++){
+        var hcell=ws[XLSX.utils.encode_cell({r:sheet.headerRow,c:c})];
+        var label='';
+        if(hcell&&hcell.v!==undefined&&hcell.v!==null){
+          if(hcell.t==='d'||(hcell.v instanceof Date)){
+            var d=hcell.v instanceof Date?hcell.v:new Date(hcell.v);
+            label=isNaN(d.getTime())?'':d.toISOString().substr(0,7);
+          } else {
+            label=String(hcell.v).replace(/\s+/g,' ').substr(0,18);
+          }
+        }
+        html+='<option value="'+c+'"'+(current===c?' selected':'')+'>'+colLetter(c)+(label?' – '+label:'')+'</option>';
+      }
+      html+='</select></div>';
+    }
+    html+='</div>';
+    if(sheet.mode==='cumulative'){
+      var availYears=Object.keys(sheet.dateMap||{}).map(function(k){return k.split('-')[0];}).filter(function(v,i,a){return a.indexOf(v)===i;}).sort();
+      html+='<div style="margin-top:8px;font-size:10px;color:var(--gm)"><b>Date map pro cumulative:</b> '+(availYears.length?'detekované roky '+availYears.join(', ')+' ('+Object.keys(sheet.dateMap||{}).length+' sloupců). Pro leden '+sheet.year+' potřebuje sloupec s prosincem '+(sheet.year-1)+'.':'<span style="color:#c0392b">žádné datumové sloupce – přepněte na "Spotřeba (delta)"</span>')+'</div>';
+    }
+    html+='</div>';
+  }
+  
+  // Preview tabulky
+  html+='<div style="font-size:11px;color:var(--gm);margin:6px 0">💡 Náhled prvních řádků (žlutě = nájemce, modře = měsíce, zeleně = hlavička):</div>';
+  html+='<div style="overflow-x:auto;max-height:300px;overflow-y:auto;border:1px solid var(--brd);border-radius:5px"><table class="wiz-table" style="margin:0">';
+  html+='<thead><tr><th style="background:#444;color:#fff;width:30px;position:sticky;left:0;z-index:2">#</th>';
+  var monthColSet={};
+  Object.values(sheet.monthCols||{}).forEach(function(c){monthColSet[c]=true;});
   for(var c=range.s.c;c<=maxC;c++){
     var classes='';
     if(c===sheet.tenantCol)classes='wiz-col-tenant';
-    else if(Object.values(sheet.monthCols).indexOf(c)>=0)classes='wiz-col-hi';
+    else if(monthColSet[c])classes='wiz-col-hi';
     html+='<th class="'+classes+'" style="min-width:80px">'+colLetter(c)+'</th>';
   }
   html+='</tr></thead><tbody>';
@@ -3315,32 +3460,145 @@ function wizardRenderStep2(){
     html+='<tr'+rowStyle+'><td style="background:#444;color:#fff;text-align:right;font-weight:700;position:sticky;left:0">'+(r+1)+'</td>';
     for(var c=range.s.c;c<=maxC;c++){
       var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
-      var val=cell?(cell.v===null||cell.v===undefined?'':cell.v):'';
-      if(typeof val==='number'){
-        val=Math.abs(val)<10?val.toFixed(2):val.toLocaleString('cs-CZ',{maximumFractionDigits:1});
+      var val='';
+      if(cell&&cell.v!==null&&cell.v!==undefined){
+        if(cell.t==='d'||(cell.v instanceof Date)){
+          var d=cell.v instanceof Date?cell.v:new Date(cell.v);
+          val=isNaN(d.getTime())?String(cell.v).substr(0,12):d.toISOString().substr(0,10);
+        } else if(typeof cell.v==='number'){
+          val=Math.abs(cell.v)<10?cell.v.toFixed(2):cell.v.toLocaleString('cs-CZ',{maximumFractionDigits:1});
+        } else {
+          val=String(cell.v).substr(0,30);
+        }
       }
-      val=String(val).substr(0,30);
       var classes='';
       if(c===sheet.tenantCol)classes='wiz-col-tenant';
-      else if(Object.values(sheet.monthCols).indexOf(c)>=0)classes='wiz-col-hi';
+      else if(monthColSet[c])classes='wiz-col-hi';
       html+='<td class="'+classes+'">'+val+'</td>';
     }
     html+='</tr>';
   }
   html+='</tbody></table></div>';
   
-  if(sheet.headerRow>=0){
-    html+='<div style="margin-top:12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'+
-      '<label style="font-size:11px;color:var(--gd);font-weight:600">Sloupec nájemce: <select class="wiz-input" onchange="wizardSetTenantCol('+wizState.currentSheet+',parseInt(this.value))">';
-    for(var c=range.s.c;c<=maxC;c++){
-      var hcell=ws[XLSX.utils.encode_cell({r:sheet.headerRow,c:c})];
-      var label=hcell?String(hcell.v||'').substr(0,20):'(prázdný)';
-      html+='<option value="'+c+'"'+(c===sheet.tenantCol?' selected':'')+'>Sl. '+colLetter(c)+' – '+label+'</option>';
-    }
-    html+='</select></label></div>';
-  }
   body.innerHTML=html;
   wizardUpdateNextButton();
+}
+function wizardSetHeaderRow(val){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  var hr=parseInt(val)-1;
+  if(isNaN(hr)||hr<0)hr=-1;
+  sheet.headerRow=hr;
+  wizardRenderStep2();
+}
+function wizardSetMonthCol(mi,val){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  var c=parseInt(val);
+  if(isNaN(c)||c<0){
+    delete sheet.monthCols[mi];
+  } else {
+    sheet.monthCols[mi]=c;
+  }
+  wizardRenderStep2();
+}
+function wizardSetMode(mode){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  sheet.mode=mode;
+  wizardRenderStep2();
+}
+function wizardSetStartRow(val){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  var r=parseInt(val)-1;
+  sheet.startRow=isNaN(r)||r<0?-1:r;
+  wizardRenderStep2();
+}
+function wizardSetEndRow(val){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  var r=parseInt(val)-1;
+  sheet.endRow=isNaN(r)||r<0?-1:r;
+  wizardRenderStep2();
+}
+// Detekce sekcí v sheetu (např. "Heating - calorimeter readings", "Cooling - ...")
+function detectSections(sheet){
+  var ws=wizState.workbook.Sheets[sheet.name];
+  var range=XLSX.utils.decode_range(ws['!ref']);
+  var sections=[]; // {row, label, suggestedMedium}
+  var patterns=[
+    {re:/heating|topení|kalorimet/i,med:'heat',label:'Heating/Teplo'},
+    {re:/cooling|chlaz|cooling cal/i,med:'cool',label:'Cooling/Chlazení'},
+    {re:/electric|elektro|electrometer|kwh/i,med:'el',label:'Electricity/Elektřina'},
+    {re:/water meter|vodom|m3.*water|water.*m3/i,med:'water',label:'Water/Voda'},
+    {re:/\bgas\b|plyn/i,med:'gas',label:'Gas/Plyn'}
+  ];
+  for(var r=range.s.r;r<=range.e.r;r++){
+    // Look in first 3 columns for section header text
+    for(var c=range.s.c;c<=Math.min(range.e.c,3);c++){
+      var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
+      if(cell&&cell.v&&typeof cell.v==='string'){
+        var v=cell.v.toLowerCase();
+        // Look for section pattern - usually contains "reading" or "readings" or " - "
+        if(v.indexOf('reading')>=0||v.indexOf('odečet')>=0||(v.indexOf(' - ')>=0&&v.length<80)){
+          for(var p=0;p<patterns.length;p++){
+            if(patterns[p].re.test(v)){
+              sections.push({row:r,label:patterns[p].label,medium:patterns[p].med,text:cell.v.substr(0,50)});
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  return sections;
+}
+function wizardReDetect(){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  var det=detectMapping(sheet);
+  sheet.headerRow=det.headerRow;
+  sheet.tenantCol=det.tenantCol;
+  sheet.monthCols=det.monthCols;
+  sheet.mode=det.mode||'delta';
+  sheet.dateMap=det.dateMap||{};
+  wizardRenderStep2();
+}
+function wizardSelectSection(row){
+  var sheet=wizState.sheetMaps[wizState.currentSheet];
+  // Set headerRow to this section's header (first row after section title with "Tenant"/"Description")
+  // Detect header row within this section
+  var ws=wizState.workbook.Sheets[sheet.name];
+  var sectRange=XLSX.utils.decode_range(ws['!ref']);
+  // Find header in next 5 rows
+  var newHeader=-1;
+  for(var r=row+1;r<=Math.min(row+8,sectRange.e.r);r++){
+    for(var c=sectRange.s.c;c<=Math.min(sectRange.e.c,30);c++){
+      var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
+      if(cell&&cell.v){
+        var v=String(cell.v).toLowerCase().trim();
+        for(var k=0;k<TENANT_EXACT.length;k++){
+          if(v===TENANT_EXACT[k]||v.startsWith(TENANT_EXACT[k]+' ')){newHeader=r;break;}
+        }
+        if(newHeader>=0)break;
+      }
+    }
+    if(newHeader>=0)break;
+  }
+  if(newHeader>=0){
+    sheet.headerRow=newHeader;
+    sheet.startRow=newHeader+1;
+    // Find end of section (next section header or end of sheet)
+    var sections=detectSections(sheet);
+    var nextSection=sections.find(function(s){return s.row>newHeader;});
+    sheet.endRow=nextSection?nextSection.row-1:-1;
+    // Reset monthCols and re-detect for new header
+    var det=detectMapping(sheet);
+    if(det.headerRow===newHeader){
+      sheet.tenantCol=det.tenantCol;
+      sheet.monthCols=det.monthCols;
+      sheet.mode=det.mode||'delta';
+      sheet.dateMap=det.dateMap||{};
+    }
+    wizardRenderStep2();
+  } else {
+    alert('Nepodařilo se najít hlavičku této sekce.');
+  }
 }
 function colLetter(c){
   var s='';
@@ -3370,24 +3628,54 @@ function aggregateAllSheets(){
     if(!result[sheet.medium])result[sheet.medium]={};
     var ws=wizState.workbook.Sheets[sheet.name];
     var range=XLSX.utils.decode_range(ws['!ref']);
-    for(var r=sheet.headerRow+1;r<=range.e.r;r++){
+    var isCumulative=sheet.mode==='cumulative';
+    var negativeWarned=false;
+    
+    var rowStart=sheet.startRow>=0?sheet.startRow:sheet.headerRow+1;
+    var rowEnd=sheet.endRow>=0?sheet.endRow:range.e.r;
+    
+    for(var r=rowStart;r<=rowEnd;r++){
       var tCell=ws[XLSX.utils.encode_cell({r:r,c:sheet.tenantCol})];
-      if(!tCell||!tCell.v)continue;
+      if(!tCell||tCell.v===null||tCell.v===undefined)continue;
       var tenantName=String(tCell.v).trim();
       if(!tenantName)continue;
-      if(/^(celkem|suma|total|součet)/i.test(tenantName))continue;
+      if(/^(celkem|suma|total|součet|sum)/i.test(tenantName))continue;
       var normalized=tenantName.replace(/\s*[-–]\s*(fakturační|podružný|fakturační\s+).*$/i,'').replace(/\s+/g,' ').trim();
       stats.tenantsFound.add(normalized);
       stats.rowsProcessed++;
       if(!result[sheet.medium][normalized])result[sheet.medium][normalized]={};
       for(var mi in sheet.monthCols){
+        var miNum=parseInt(mi);
         var mCol=sheet.monthCols[mi];
         var mCell=ws[XLSX.utils.encode_cell({r:r,c:mCol})];
-        if(mCell&&typeof mCell.v==='number'&&!isNaN(mCell.v)){
-          var miNum=parseInt(mi);
-          if(!(miNum in result[sheet.medium][normalized]))result[sheet.medium][normalized][miNum]=0;
-          result[sheet.medium][normalized][miNum]+=mCell.v;
+        if(!mCell||typeof mCell.v!=='number'||isNaN(mCell.v))continue;
+        var value;
+        if(isCumulative){
+          // Spočítej deltu vůči předchozímu měsíci
+          var prevMi=miNum-1, prevYear=sheet.year;
+          if(prevMi<0){prevMi=11;prevYear=sheet.year-1;}
+          var prevKey=prevYear+'-'+prevMi;
+          var prevCol=sheet.dateMap?sheet.dateMap[prevKey]:undefined;
+          if(prevCol===undefined||prevCol===null){
+            // No prev month reading - skip (cannot compute delta)
+            continue;
+          }
+          var prevCell=ws[XLSX.utils.encode_cell({r:r,c:prevCol})];
+          if(!prevCell||typeof prevCell.v!=='number'||isNaN(prevCell.v))continue;
+          value=mCell.v-prevCell.v;
+          if(value<0){
+            // Záporná hodnota - meter reset nebo chyba. Skip.
+            if(!negativeWarned){
+              stats.warnings.push('Sheet "'+sheet.name+'": některé řádky mají záporný delta (možná reset měřáku) – přeskočeny');
+              negativeWarned=true;
+            }
+            continue;
+          }
+        } else {
+          value=mCell.v;
         }
+        if(!(miNum in result[sheet.medium][normalized]))result[sheet.medium][normalized][miNum]=0;
+        result[sheet.medium][normalized][miNum]+=value;
       }
     }
   });
