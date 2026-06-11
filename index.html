@@ -435,32 +435,34 @@ tr:hover td{background:#f9fbfc}
         <div class="upz" id="upz" onclick="document.getElementById('finp').click()">
           <span style="font-size:28px;display:block;margin-bottom:8px">📊</span>
           <p style="font-size:13px;color:var(--gm)" id="upz-text">Přetáhněte soubor nebo klikněte</p>
-          <small style="font-size:11px;color:var(--gl)" id="upz-sub">xlsx · xls · max 10 MB</small>
+          <small style="font-size:11px;color:var(--gl)" id="upz-sub">xlsx · max 10 MB</small>
           <input type="file" id="finp" accept=".xlsx,.xls" style="display:none">
         </div>
         <div id="import-status" style="display:none;margin-bottom:12px"></div>
-        <div class="card"><div class="ct"><span class="ct-a">▌</span> Nastavení importu</div>
+        <div class="card"><div class="ct"><span class="ct-a">▌</span> Import dat</div>
           <div style="display:grid;gap:10px">
             <div><label class="flab">Objekt <span style="color:var(--red)">*</span></label><select class="finp" id="imp-objekt"></select></div>
             <button class="btn-p" style="width:100%;justify-content:center;padding:10px;font-weight:600" id="btn-submit">🔎 Analyzovat soubor</button>
-            <p style="font-size:11px;color:var(--gm);margin:6px 0 0;text-align:center">Aplikace projde všechny sheety a automaticky detekuje média, nájemce, měsíce a chyby. Před uložením uvidíte přehled.</p>
           </div>
         </div>
       </div>
-      <div class="card"><div class="ct"><span class="ct-a">▌</span> Co umí auto-detekce</div>
-        <div style="font-size:11px;color:var(--gd);line-height:1.7">
-          <b>Formáty:</b> Český (Churchill), anglický (Masaryčka), kombinovaný<br>
-          <b>Hlavičky:</b> "Nájemce", "Tenant", "Description", "Customer"<br>
-          <b>Měsíce:</b> Excel date objekty NEBO text "Odečet za MM/YYYY"<br>
-          <b>Režim:</b> Spotřeba (delta) i kumulativní stav měřáku (auto)<br>
-          <b>Multi-section:</b> Listy s víc médii (HCEWG, Média) rozdělí na sekce
+      <div class="card"><div class="ct"><span class="ct-a">▌</span> Jak na to</div>
+        <div style="font-size:12px;color:var(--gd);line-height:1.8">
+          Aplikace importuje data ze <b>standardní šablony</b> <code style="background:var(--gbg);padding:1px 5px;border-radius:3px;font-size:11px">Rilancio_FM_template.xlsx</code>.<br>
+          Šablona má list <b>"Spotřeby"</b> se sloupci:<br>
+          <span style="font-family:Courier,monospace;font-size:11px;color:var(--teal)">Nájemce | Médium | Rok | Leden ... Prosinec</span>
         </div>
-        <div style="margin-top:14px;padding:10px;background:#fef9e8;border-radius:4px;font-size:11px;color:#7d5e0e">
-          <b>⚠ Co aplikace nahlásí:</b><br>
-          • Záporné hodnoty (možná chyba měřáku)<br>
-          • Nájemce co v objektu nejsou (budou přidáni)<br>
-          • Měsíce co se přepíšou<br>
-          • Sheety co nelze přečíst
+        <button class="btn-o" onclick="downloadTemplate()" style="margin-top:12px;width:100%;font-size:12px;padding:8px">📥 Stáhnout prázdnou šablonu</button>
+        <div style="margin-top:14px;padding:10px;background:#e8f4fc;border-radius:4px;font-size:11px;color:#1f618d">
+          <b>💡 Pro převod z jiných formátů:</b><br>
+          Nahodte report od dodavatele do chatu s Claude a napište:<br>
+          <i>"Převed tento report do šablony FM Spotřeby pro objekt X, měsíc Y"</i><br>
+          Claude vám pošle hotovou šablonu připravenou k importu.
+        </div>
+        <div style="margin-top:10px;padding:10px;background:#fef9e8;border-radius:4px;font-size:11px;color:#7d5e0e">
+          <b>⚠ Co se importuje:</b><br>
+          • Jen roky <b>2025</b> a <b>2026</b><br>
+          • Záporné hodnoty se uloží + vytvoří alarm
         </div>
       </div>
     </div>
@@ -2910,15 +2912,14 @@ async function deleteObject(idx){
 }
 
 // ============================================================
-// === Auto-import xlsx (jedna obrazovka, žádný wizard) ===
+// === Import standardní šablony Rilancio_FM_template.xlsx ===
 // ============================================================
 
 var impState={objIdx:-1,file:null,workbook:null,analysis:null};
-var TENANT_EXACT=['nájemce','najemce','tenant'];
-var TENANT_KEYWORDS=['nájemce','najemce','tenant','description','customer'];
 var MONTH_NAMES_CZ=['leden','únor','březen','duben','květen','červen','červenec','srpen','září','říjen','listopad','prosinec'];
+var VALID_MEDIA=['el','heat','cool','gas','water'];
+var MEDIA_LABELS={el:'⚡ Elektřina (kWh)',heat:'🔥 Teplo (GJ)',cool:'❄ Chlazení (GJ)',gas:'🔥 Plyn (m³)',water:'💧 Voda (m³)'};
 
-// Navigate from object detail to import section
 function goToImportFor(objIdx){
   showSec('import');
   setTimeout(function(){
@@ -2927,7 +2928,6 @@ function goToImportFor(objIdx){
   },80);
 }
 
-// File select handler (used by both click + drop)
 function impHandleFileSelected(file){
   if(!file)return;
   if(!file.name.match(/\.xlsx?$/i)){alert('Vyberte .xlsx nebo .xls soubor.');return;}
@@ -2945,355 +2945,240 @@ function impClearFile(){
   document.getElementById('upz').style.borderColor='';
   document.getElementById('upz').style.background='';
   document.getElementById('upz-text').innerHTML='Přetáhněte soubor nebo klikněte';
-  document.getElementById('upz-sub').textContent='xlsx · xls · max 10 MB';
+  document.getElementById('upz-sub').textContent='xlsx · max 10 MB';
   document.getElementById('finp').value='';
   document.getElementById('imp-step1').style.display='';
   document.getElementById('imp-report').style.display='none';
   document.getElementById('imp-report').innerHTML='';
 }
 
-// === Detekce sekcí v jednom listu ===
-var SECTION_PATTERNS=[
-  {re:/heating|topení|kalorimet|teplo/i,med:'heat',label:'Teplo'},
-  {re:/cooling|chlaz|chladn/i,med:'cool',label:'Chlazení'},
-  {re:/electric|elektro|electrometer|kwh/i,med:'el',label:'Elektřina'},
-  {re:/water meter|vodom|m3.*water|water.*m3|water.*reading/i,med:'water',label:'Voda'},
-  {re:/\bgas\b|plyn[ao]m|plyn$|^plyn/i,med:'gas',label:'Plyn'}
-];
-function findSectionsInSheet(ws){
-  var range=XLSX.utils.decode_range(ws['!ref']);
-  var sections=[];
-  for(var r=range.s.r;r<=Math.min(range.e.r,800);r++){
-    for(var c=range.s.c;c<=Math.min(range.e.c,3);c++){
-      var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
-      if(cell&&cell.v&&typeof cell.v==='string'){
-        var v=cell.v.toLowerCase();
-        if(v.length<100&&(v.indexOf('reading')>=0||v.indexOf('odečet')>=0||v.indexOf(' - ')>=0||/^(heating|cooling|water|gas|electric|elektro|vodom|kalor|plyn|teplo|chlaz)/i.test(v))){
-          for(var p=0;p<SECTION_PATTERNS.length;p++){
-            if(SECTION_PATTERNS[p].re.test(v)){
-              sections.push({row:r,col:c,medium:SECTION_PATTERNS[p].med,label:SECTION_PATTERNS[p].label,text:cell.v.substr(0,60)});
-              break;
-            }
-          }
-        }
-      }
+// === Parsování standardní šablony ===
+// Očekává: sheet "Spotřeby" se sloupci: Nájemce | Médium | Rok | Leden | Únor | ... | Prosinec
+function parseTemplate(workbook){
+  // Najdi sheet "Spotřeby" (case insensitive, tolerantní)
+  var sheetName=null;
+  for(var i=0;i<workbook.SheetNames.length;i++){
+    var n=workbook.SheetNames[i].toLowerCase().trim();
+    if(n==='spotřeby'||n==='spotreby'||n==='consumption'||n==='data'){
+      sheetName=workbook.SheetNames[i];break;
     }
   }
-  return sections;
-}
-
-// === Analýza jedné sekce (od startRow do endRow) ===
-function analyzeSection(workbook,sheetName,startRow,endRow,presetMedium,sectionLabel){
+  // Fallback: první sheet
+  if(!sheetName)sheetName=workbook.SheetNames[0];
+  
   var ws=workbook.Sheets[sheetName];
-  if(!ws['!ref'])return null;
+  if(!ws||!ws['!ref'])return {ok:false,error:'Sheet "Spotřeby" nenalezen nebo prázdný.'};
   var range=XLSX.utils.decode_range(ws['!ref']);
-  var maxC=range.e.c;
   
-  // 1) Najdi header row v rozsahu [startRow, startRow+12]
-  var searchMax=Math.min(endRow,startRow+12);
-  var bestRow=-1, bestScore=0;
-  for(var r=startRow;r<=searchMax;r++){
-    var score=0, hasTenant=false, dateCount=0;
-    for(var c=0;c<=maxC;c++){
+  // Najdi řádek hlavičky - hledej "Nájemce" v prvních 5 řádcích
+  var headerRow=-1;
+  for(var r=range.s.r;r<=Math.min(range.e.r,5);r++){
+    for(var c=range.s.c;c<=Math.min(range.e.c,20);c++){
       var cell=ws[XLSX.utils.encode_cell({r:r,c:c})];
-      if(!cell||cell.v===null||cell.v===undefined)continue;
-      if(cell.t==='d'||(cell.v instanceof Date)){dateCount++;score++;continue;}
-      var v=String(cell.v).toLowerCase();
-      for(var k=0;k<TENANT_KEYWORDS.length;k++){
-        if(v.indexOf(TENANT_KEYWORDS[k])>=0){hasTenant=true;score+=3;break;}
+      if(cell&&cell.v){
+        var v=String(cell.v).toLowerCase().trim();
+        if(v==='nájemce'||v==='najemce'||v==='tenant'){headerRow=r;break;}
       }
-      if(v.indexOf('odečet')>=0||v.indexOf('reading')>=0)score++;
-      if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0||v.indexOf('consumption')>=0)score+=2;
     }
-    if(score>bestScore){bestScore=score;bestRow=r;}
+    if(headerRow>=0)break;
   }
-  if(bestRow<0)return null;
-  var headerRow=bestRow;
+  if(headerRow<0)return {ok:false,error:'Nenalezen sloupec "Nájemce" v prvních 5 řádcích sheetu "'+sheetName+'".'};
   
-  // 2) Tenant col (exact match first)
-  var tenantCol=-1;
-  for(var c=0;c<=maxC;c++){
+  // Mapuj sloupce z hlavičky
+  var colMap={tenant:-1,medium:-1,year:-1,months:{}};
+  for(var c=range.s.c;c<=range.e.c;c++){
     var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
-    if(!cell||cell.v===null)continue;
+    if(!cell||!cell.v)continue;
     var v=String(cell.v).toLowerCase().trim();
-    for(var k=0;k<TENANT_EXACT.length;k++){
-      if(v===TENANT_EXACT[k]||v.startsWith(TENANT_EXACT[k]+' ')||v.startsWith(TENANT_EXACT[k]+'/')){
-        tenantCol=c;break;
-      }
-    }
-    if(tenantCol>=0)break;
-  }
-  if(tenantCol<0){
-    for(var c=0;c<=maxC;c++){
-      var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
-      if(!cell||cell.v===null)continue;
-      var v=String(cell.v).toLowerCase();
-      for(var k=0;k<TENANT_KEYWORDS.length;k++){
-        if(v.indexOf(TENANT_KEYWORDS[k])>=0){tenantCol=c;break;}
-      }
-      if(tenantCol>=0)break;
-    }
-  }
-  if(tenantCol<0)return null;
-  
-  // 3) Month cols + date map (per year)
-  var monthColsByYear={};
-  var dateMap={}; // 'YYYY-MM' -> col
-  var dateColCount=0;
-  for(var c=0;c<=maxC;c++){
-    var cell=ws[XLSX.utils.encode_cell({r:headerRow,c:c})];
-    if(!cell||cell.v===null||cell.v===undefined)continue;
-    if(cell.t==='d'||(cell.v instanceof Date)){
-      var d=cell.v instanceof Date?cell.v:new Date(cell.v);
-      if(!isNaN(d.getTime())){
-        var y=d.getFullYear(), m=d.getMonth();
-        dateMap[y+'-'+m]=c;
-        dateColCount++;
-        var lastDay=new Date(y,m+1,0).getDate();
-        if(d.getDate()>=lastDay-2||d.getDate()===1){
-          if(!monthColsByYear[y])monthColsByYear[y]={};
-          monthColsByYear[y][m]=c;
-        }
-      }
-      continue;
-    }
-    var v=String(cell.v).toLowerCase();
-    if(v.indexOf('spotřeb')>=0||v.indexOf('spotreb')>=0||v.indexOf('consumption')>=0){
-      for(var lc=c-1;lc>=Math.max(0,c-4);lc--){
-        var ocell=ws[XLSX.utils.encode_cell({r:headerRow,c:lc})];
-        if(!ocell||!ocell.v)continue;
-        var ov=String(ocell.v).toLowerCase();
-        if(ov.indexOf('odečet')>=0||ov.indexOf('reading')>=0){
-          var match=ov.match(/(\d{1,2})\/(\d{4})/);
-          if(match){
-            var mm=parseInt(match[1])-1, yy=parseInt(match[2]);
-            if(mm>=0&&mm<12){
-              if(!monthColsByYear[yy])monthColsByYear[yy]={};
-              monthColsByYear[yy][mm]=c;
-            }
-          }
-          break;
+    if(v==='nájemce'||v==='najemce'||v==='tenant')colMap.tenant=c;
+    else if(v==='médium'||v==='medium')colMap.medium=c;
+    else if(v==='rok'||v==='year')colMap.year=c;
+    else {
+      // Try month match
+      for(var mi=0;mi<12;mi++){
+        if(v.startsWith(MONTH_NAMES_CZ[mi].substr(0,3))){
+          colMap.months[mi]=c;break;
         }
       }
     }
   }
-  var isCumulative=dateColCount>=3;
   
-  // 4) Určit médium (preset nebo z názvu sheetu)
-  var medium=presetMedium;
-  if(!medium){
-    var sn=sheetName.toLowerCase();
-    for(var p=0;p<SECTION_PATTERNS.length;p++){
-      if(SECTION_PATTERNS[p].re.test(sn)){medium=SECTION_PATTERNS[p].med;break;}
+  if(colMap.tenant<0||colMap.medium<0||colMap.year<0){
+    return {ok:false,error:'Chybí jeden z povinných sloupců: Nájemce / Médium / Rok'};
+  }
+  if(Object.keys(colMap.months).length===0){
+    return {ok:false,error:'Nenalezeny žádné měsíční sloupce (Leden – Prosinec).'};
+  }
+  
+  // Zpracuj data
+  var rows=[]; // {tenant, medium, year, values:{mi:val}, negatives:[mi]}
+  var errors=[];
+  var warnings=[];
+  
+  for(var r=headerRow+1;r<=range.e.r;r++){
+    var tCell=ws[XLSX.utils.encode_cell({r:r,c:colMap.tenant})];
+    var mCell=ws[XLSX.utils.encode_cell({r:r,c:colMap.medium})];
+    var yCell=ws[XLSX.utils.encode_cell({r:r,c:colMap.year})];
+    
+    if(!tCell||!tCell.v)continue; // prázdný řádek
+    
+    var tenant=String(tCell.v).trim();
+    var medium=mCell&&mCell.v?String(mCell.v).toLowerCase().trim():'';
+    var year=yCell&&yCell.v?parseInt(yCell.v):NaN;
+    
+    if(!tenant)continue;
+    if(!medium){errors.push('Řádek '+(r+1)+' (nájemce '+tenant+'): chybí médium');continue;}
+    if(VALID_MEDIA.indexOf(medium)<0){errors.push('Řádek '+(r+1)+' (nájemce '+tenant+'): neplatné médium "'+medium+'" – musí být el/heat/cool/gas/water');continue;}
+    if(isNaN(year)||(year!==2025&&year!==2026)){
+      warnings.push('Řádek '+(r+1)+' (nájemce '+tenant+'): rok '+year+' – přeskočeno (jen 2025 a 2026)');continue;
     }
-  }
-  if(!medium)return null;
-  
-  // 5) Zpracovat data pro každý dostupný rok (priorita 2026 > 2025)
-  var availableYears=Object.keys(monthColsByYear).map(Number).filter(function(y){return y>=2024;}).sort();
-  if(availableYears.length===0){
-    return {sheetName:sheetName,sectionLabel:sectionLabel,medium:medium,skip:true,reason:'Žádná data pro rok ≥ 2024'};
-  }
-  
-  var yearResults={};
-  availableYears.forEach(function(year){
-    var monthCols=monthColsByYear[year]||{};
-    if(Object.keys(monthCols).length===0)return;
-    var data={};
+    
+    var values={};
     var negatives=[];
-    var rowStart=headerRow+1;
-    for(var r=rowStart;r<=endRow;r++){
-      var tCell=ws[XLSX.utils.encode_cell({r:r,c:tenantCol})];
-      if(!tCell||tCell.v===null||tCell.v===undefined)continue;
-      var tenantName=String(tCell.v).trim();
-      if(!tenantName)continue;
-      if(/^(celkem|suma|total|součet|sum)/i.test(tenantName))continue;
-      var normalized=tenantName.replace(/\s*[-–]\s*(fakturační|podružný|fakturační\s+).*$/i,'').replace(/\s+/g,' ').trim();
-      if(!data[normalized])data[normalized]={};
-      for(var mi in monthCols){
-        var mCol=monthCols[mi];
-        var mCell=ws[XLSX.utils.encode_cell({r:r,c:mCol})];
-        if(!mCell||typeof mCell.v!=='number'||isNaN(mCell.v))continue;
-        var value;
-        if(isCumulative){
-          var prevMi=parseInt(mi)-1, prevYear=year;
-          if(prevMi<0){prevMi=11;prevYear=year-1;}
-          var prevCol=dateMap[prevYear+'-'+prevMi];
-          if(prevCol===undefined||prevCol===null)continue;
-          var prevCell=ws[XLSX.utils.encode_cell({r:r,c:prevCol})];
-          if(!prevCell||typeof prevCell.v!=='number')continue;
-          value=mCell.v-prevCell.v;
-        } else {
-          value=mCell.v;
-        }
-        if(value<0){
-          negatives.push({tenant:normalized,month:parseInt(mi),value:value,row:r+1});
-        }
-        var miNum=parseInt(mi);
-        if(!(miNum in data[normalized]))data[normalized][miNum]=0;
-        data[normalized][miNum]+=value;
-      }
+    for(var mi in colMap.months){
+      var col=colMap.months[mi];
+      var vCell=ws[XLSX.utils.encode_cell({r:r,c:col})];
+      if(!vCell||vCell.v===null||vCell.v===undefined||vCell.v==='')continue;
+      var val=parseFloat(vCell.v);
+      if(isNaN(val))continue;
+      values[mi]=val;
+      if(val<0)negatives.push(parseInt(mi));
     }
-    var tenantCount=Object.keys(data).length;
-    var valueCount=0;
-    Object.values(data).forEach(function(t){valueCount+=Object.keys(t).length;});
-    yearResults[year]={data:data,negatives:negatives,monthCount:Object.keys(monthCols).length,tenantCount:tenantCount,valueCount:valueCount};
-  });
+    
+    if(Object.keys(values).length===0)continue; // řádek bez hodnot
+    
+    rows.push({tenant:tenant,medium:medium,year:year,values:values,negatives:negatives,row:r+1});
+  }
   
-  return {
-    sheetName:sheetName,
-    sectionLabel:sectionLabel,
-    medium:medium,
-    mode:isCumulative?'cumulative':'delta',
-    startRow:startRow,endRow:endRow,
-    headerRow:headerRow,tenantCol:tenantCol,
-    yearResults:yearResults,
-    skip:false
-  };
+  return {ok:true,rows:rows,errors:errors,warnings:warnings,sheetName:sheetName};
 }
 
-// === Hlavní analýza celého souboru ===
-function runFullAnalysis(workbook,objIdx){
-  var sections=[];
-  var globalErrors=[];
-  workbook.SheetNames.forEach(function(sheetName){
-    var ws=workbook.Sheets[sheetName];
-    if(!ws['!ref']){return;}
-    var range=XLSX.utils.decode_range(ws['!ref']);
-    if(range.e.r<3||range.e.c<3)return; // skip too small
-    
-    // Najdi sekce
-    var foundSections=findSectionsInSheet(ws);
-    
-    if(foundSections.length===0){
-      // Single-section sheet: zkus celý sheet
-      var single=analyzeSection(workbook,sheetName,range.s.r,range.e.r,null,null);
-      if(single)sections.push(single);
-    } else if(foundSections.length===1){
-      // Jedna sekce - použij ji
-      var s=foundSections[0];
-      var single=analyzeSection(workbook,sheetName,s.row,range.e.r,s.medium,s.label);
-      if(single)sections.push(single);
-    } else {
-      // Multi-section - rozděl na sekce
-      foundSections.forEach(function(s,idx){
-        var nextS=foundSections[idx+1];
-        var endRow=nextS?nextS.row-1:range.e.r;
-        var sect=analyzeSection(workbook,sheetName,s.row,endRow,s.medium,s.label);
-        if(sect)sections.push(sect);
-      });
-    }
-  });
-  return {sections:sections,globalErrors:globalErrors,objIdx:objIdx};
-}
-
-// === Render report ===
-function renderAnalysisReport(result){
-  var o=OBJ[result.objIdx];
+// === Renderovat report ===
+function renderAnalysisReport(parsed){
+  var o=OBJ[impState.objIdx];
   if(!o){alert('Objekt nenalezen.');return;}
-  var medNames={el:'⚡ Elektřina (kWh)',heat:'🔥 Teplo (GJ)',cool:'❄ Chlazení (GJ)',gas:'🔥 Plyn (m³)',water:'💧 Voda (m³)'};
+  
   var existingTenants=new Set();
   ['el','heat','cool','gas','water'].forEach(function(m){
     if(o.tenants&&o.tenants[m])Object.keys(o.tenants[m]).forEach(function(t){existingTenants.add(t);});
   });
   
-  // Aggregate totals
-  var totalSections=result.sections.length;
-  var skippedSections=result.sections.filter(function(s){return s.skip;}).length;
-  var importableSections=result.sections.filter(function(s){return !s.skip;});
-  var totalValues=0,totalTenants=new Set(),totalNegatives=0;
-  importableSections.forEach(function(s){
-    Object.values(s.yearResults||{}).forEach(function(yr){
-      totalValues+=yr.valueCount||0;
-      totalNegatives+=(yr.negatives||[]).length;
-      Object.keys(yr.data||{}).forEach(function(t){totalTenants.add(t);});
-    });
+  // Souhrn
+  var totalRows=parsed.rows.length;
+  var uniqueTenants=new Set(); parsed.rows.forEach(function(r){uniqueTenants.add(r.tenant);});
+  var totalValues=0, totalNegatives=0;
+  var newTenants=new Set(), knownTenants=new Set();
+  var mediaSet=new Set();
+  
+  parsed.rows.forEach(function(r){
+    totalValues+=Object.keys(r.values).length;
+    totalNegatives+=r.negatives.length;
+    mediaSet.add(r.medium);
+    if(existingTenants.has(r.tenant))knownTenants.add(r.tenant);
+    else newTenants.add(r.tenant);
   });
   
-  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><b style="font-size:14px;color:var(--navy)">Analýza souboru: '+impState.file.name+'</b><button class="btn-o" onclick="impClearFile()" style="font-size:11px;padding:4px 10px">← Zrušit a nahrát jiný</button></div>';
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px"><b style="font-size:14px;color:var(--navy)">Analýza šablony: '+impState.file.name+'</b><button class="btn-o" onclick="impClearFile()" style="font-size:11px;padding:4px 10px">← Zrušit a nahrát jiný</button></div>';
   
   // Souhrn
-  html+='<div class="wiz-success" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:14px 18px">'+
-    '<div><div style="font-size:22px;font-weight:700;color:var(--green)">'+importableSections.length+'</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Sekcí k importu</div></div>'+
-    '<div><div style="font-size:22px;font-weight:700;color:var(--navy)">'+totalTenants.size+'</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Nájemců</div></div>'+
-    '<div><div style="font-size:22px;font-weight:700;color:var(--teal)">'+totalValues.toLocaleString('cs-CZ')+'</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Hodnot</div></div>'+
+  html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:14px 18px;background:#e8f8ee;border:1px solid var(--green);border-radius:6px">'+
+    '<div><div style="font-size:22px;font-weight:700;color:var(--green)">'+totalRows+'</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Řádků k importu</div></div>'+
+    '<div><div style="font-size:22px;font-weight:700;color:var(--navy)">'+uniqueTenants.size+'</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Nájemců</div></div>'+
+    '<div><div style="font-size:22px;font-weight:700;color:var(--teal)">'+totalValues+'</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Hodnot</div></div>'+
     '<div><div style="font-size:22px;font-weight:700;color:'+(totalNegatives>0?'#c0392b':'var(--gl)')+'">'+totalNegatives+'</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">Záporných</div></div>'+
   '</div>';
   
-  if(importableSections.length===0){
-    html+='<div class="wiz-err"><b>⚠ V souboru nebyly nalezeny žádné importovatelné sekce.</b><br>Možné příčiny: jiný formát souboru, žádná data pro rok 2024+, chybějící sloupec "Nájemce" nebo "Tenant".</div>';
+  // Chyby
+  if(parsed.errors.length>0){
+    html+='<div class="wiz-err" style="margin-top:12px"><b>⚠ Chyby ('+parsed.errors.length+'):</b><br>'+
+      parsed.errors.slice(0,10).map(function(e){return '· '+e;}).join('<br>')+
+      (parsed.errors.length>10?'<br>· ... a dalších '+(parsed.errors.length-10):'')+
+    '</div>';
+  }
+  
+  // Varování (přeskočené roky)
+  if(parsed.warnings.length>0){
+    html+='<div class="wiz-warn" style="margin-top:8px"><b>⚠ Přeskočeno ('+parsed.warnings.length+'):</b><br>'+
+      parsed.warnings.slice(0,5).map(function(w){return '· '+w;}).join('<br>')+
+      (parsed.warnings.length>5?'<br>· ... a dalších '+(parsed.warnings.length-5):'')+
+    '</div>';
+  }
+  
+  if(totalRows===0){
+    html+='<div class="wiz-err" style="margin-top:12px">Žádná data k importu. Zkontrolujte formát šablony.</div>';
     html+='<div style="text-align:right;margin-top:14px"><button class="btn-o" onclick="impClearFile()">Zavřít</button></div>';
+    document.getElementById('imp-step1').style.display='none';
+    document.getElementById('imp-report').style.display='';
     document.getElementById('imp-report').innerHTML=html;
     return;
   }
   
-  // Per-sekci
-  html+='<div style="margin-top:18px"><b style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">▌ Detekované sekce</b></div>';
-  importableSections.forEach(function(s,si){
-    var yearList=Object.keys(s.yearResults).map(Number).sort();
-    var allNegatives=[];
-    var allNewTenants=new Set();
-    var existingMatch=0;
-    yearList.forEach(function(y){
-      var yr=s.yearResults[y];
-      (yr.negatives||[]).forEach(function(n){allNegatives.push({...n,year:y});});
-      Object.keys(yr.data).forEach(function(t){
-        if(existingTenants.has(t))existingMatch++;
-        else allNewTenants.add(t);
-      });
+  // Detail per médium + rok
+  html+='<div style="margin-top:18px"><b style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--gd)">▌ Detail dle médií</b></div>';
+  
+  Array.from(mediaSet).forEach(function(med){
+    var medRows=parsed.rows.filter(function(r){return r.medium===med;});
+    var years={};
+    medRows.forEach(function(r){
+      if(!years[r.year])years[r.year]={tenants:new Set(),values:0,negatives:0};
+      years[r.year].tenants.add(r.tenant);
+      years[r.year].values+=Object.keys(r.values).length;
+      years[r.year].negatives+=r.negatives.length;
     });
-    var locLabel=s.sectionLabel?s.sheetName+' :: '+s.sectionLabel+' (ř. '+(s.startRow+1)+'-'+(s.endRow+1)+')':s.sheetName;
-    html+='<div style="border:1px solid var(--brd);border-radius:6px;padding:12px 14px;margin-top:10px;background:#fff">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">'+
-        '<div><b style="color:var(--navy);font-size:13px">'+medNames[s.medium]+'</b> <span style="font-size:11px;color:var(--gm)">· '+locLabel+'</span></div>'+
-        '<div style="font-size:10px;color:var(--gm)">režim: '+(s.mode==='cumulative'?'kumulativní (rozdíly)':'spotřeba (delta)')+'</div>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:11px;color:var(--gd);margin-bottom:6px">'+
-        yearList.map(function(y){
-          var yr=s.yearResults[y];
-          return '<div style="background:var(--gbg);padding:6px 10px;border-radius:4px"><b style="color:var(--teal)">Rok '+y+':</b> '+yr.monthCount+' měsíců · '+yr.tenantCount+' nájemců · '+yr.valueCount+' hodnot</div>';
+    html+='<div style="border:1px solid var(--brd);border-radius:6px;padding:12px 14px;margin-top:8px;background:#fff">'+
+      '<b style="color:var(--navy);font-size:13px">'+MEDIA_LABELS[med]+'</b>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:6px;font-size:11px">'+
+        Object.keys(years).sort().map(function(y){
+          var yr=years[y];
+          return '<div style="background:var(--gbg);padding:6px 10px;border-radius:4px"><b style="color:var(--teal)">Rok '+y+':</b> '+yr.tenants.size+' nájemců · '+yr.values+' hodnot'+(yr.negatives>0?' · <span style="color:#c0392b">'+yr.negatives+' záporných</span>':'')+'</div>';
         }).join('')+
-      '</div>';
-    
-    if(allNegatives.length>0){
-      html+='<div style="background:#fee;border-left:3px solid #c0392b;padding:6px 10px;margin-top:6px;font-size:11px;color:#7d2e22">'+
-        '<b>⚠ '+allNegatives.length+' záporných hodnot</b> (možná chyba měřáku nebo reset):<br>'+
-        allNegatives.slice(0,5).map(function(n){return '· '+n.tenant+' / '+MONTH_NAMES_CZ[n.month]+' '+n.year+': '+n.value.toFixed(1)+' (ř. '+n.row+')';}).join('<br>')+
-        (allNegatives.length>5?'<br>· ... a dalších '+(allNegatives.length-5):'')+
-      '</div>';
-    }
-    if(allNewTenants.size>0){
-      var ar=Array.from(allNewTenants);
-      html+='<div style="background:#fef9e8;border-left:3px solid #e6a817;padding:6px 10px;margin-top:6px;font-size:11px;color:#7d5e0e">'+
-        '<b>+ '+allNewTenants.size+' nových nájemců</b> (budou přidáni): '+ar.slice(0,8).join(', ')+(ar.length>8?', ...':'')+
-      '</div>';
-    }
-    if(existingMatch>0){
-      html+='<div style="background:#e8f8ee;border-left:3px solid var(--green);padding:6px 10px;margin-top:6px;font-size:11px;color:#1e5e34">'+
-        '<b>✓ '+existingMatch+' známých nájemců</b> – hodnoty budou aktualizovány'+
-      '</div>';
-    }
-    html+='</div>';
+      '</div>'+
+    '</div>';
   });
   
-  // Skipped sections
-  if(skippedSections>0){
-    html+='<div class="wiz-warn" style="margin-top:14px"><b>⚠ Přeskočeno '+skippedSections+' sekcí:</b><br>'+
-      result.sections.filter(function(s){return s.skip;}).map(function(s){return '· '+(s.sectionLabel?s.sheetName+' :: '+s.sectionLabel:s.sheetName)+' – '+(s.reason||'neznámý důvod');}).join('<br>')+
-    '</div>';
+  // Záporné hodnoty detail
+  if(totalNegatives>0){
+    html+='<div style="background:#fee;border-left:3px solid #c0392b;padding:10px 14px;margin-top:10px;font-size:11px;color:#7d2e22">'+
+      '<b>⚠ '+totalNegatives+' záporných hodnot</b> (možná chyba měřáku nebo reset):<br>';
+    var negList=[];
+    parsed.rows.forEach(function(r){
+      r.negatives.forEach(function(mi){
+        negList.push('· '+r.tenant+' / '+MEDIA_LABELS[r.medium].replace(/[⚡🔥❄💧]/g,'').trim()+' / '+MONTH_NAMES_CZ[mi]+' '+r.year+': '+r.values[mi].toFixed(2)+' (ř. '+r.row+')');
+      });
+    });
+    html+=negList.slice(0,8).join('<br>');
+    if(negList.length>8)html+='<br>· ... a dalších '+(negList.length-8);
+    html+='<br><br><i>Tyto hodnoty se importují <b>jak jsou</b>. Aplikace pro ně automaticky vytvoří alarmy se statusem "Řeší se".</i></div>';
   }
   
-  // Confirm
-  html+='<div style="margin-top:18px;padding:14px;background:var(--gbg);border-radius:6px">'+
-    '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:12px">'+
-      '<input type="checkbox" id="imp-confirm" onchange="document.getElementById(\'imp-do\').disabled=!this.checked;document.getElementById(\'imp-alarm\').disabled=!this.checked" style="margin-top:2px">'+
-      '<span><b>Potvrzuji import</b> všech importovatelných sekcí do objektu <b>'+o.n+'</b>. Známé měsíce budou přepsány. Noví nájemci budou přidáni.</span>'+
-    '</label>'+
-    (totalNegatives>0?'<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:12px;margin-top:8px"><input type="checkbox" id="imp-alarm" checked disabled style="margin-top:2px"><span>Vytvořit <b>'+totalNegatives+' alarmů</b> typu "Možná chyba měřáku" pro záporné hodnoty (FM je uvidí v sekci Alarmy)</span></label>':'')+
-  '</div>';
-  html+='<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">'+
-    '<button class="btn-o" onclick="impClearFile()">Zrušit</button>'+
-    '<button class="btn-p" id="imp-do" disabled onclick="impConfirmAndSave()">💾 Importovat vše do cloudu</button>'+
+  // Nájemci
+  if(newTenants.size>0||knownTenants.size>0){
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">';
+    if(knownTenants.size>0){
+      html+='<div class="wiz-success"><b>✓ '+knownTenants.size+' známých nájemců</b><br><span style="font-size:10px">'+
+        Array.from(knownTenants).slice(0,8).join(', ')+(knownTenants.size>8?', ...':'')+
+      '</span></div>';
+    }
+    if(newTenants.size>0){
+      html+='<div class="wiz-warn"><b>+ '+newTenants.size+' nových nájemců (budou přidáni)</b><br><span style="font-size:10px">'+
+        Array.from(newTenants).slice(0,8).join(', ')+(newTenants.size>8?', ...':'')+
+      '</span></div>';
+    }
+    html+='</div>';
+  }
+  
+  // Akce - sticky panel dole
+  html+='<div style="position:sticky;bottom:0;background:#fff;border-top:2px solid var(--teal);padding:14px 0;margin-top:18px;z-index:10">'+
+    '<div style="padding:12px;background:var(--gbg);border-radius:6px">'+
+      '<label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-size:12px">'+
+        '<input type="checkbox" id="imp-confirm" onchange="document.getElementById(\'imp-do\').disabled=!this.checked" style="margin-top:2px">'+
+        '<span><b>Potvrzuji import</b> do objektu <b>'+o.n+'</b>. Známé měsíce budou přepsány. '+newTenants.size+' nových nájemců přidáno.</span>'+
+      '</label>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">'+
+      '<button class="btn-o" onclick="impClearFile()">Zrušit</button>'+
+      '<button class="btn-p" id="imp-do" disabled onclick="impConfirmAndSave()" style="font-weight:600">💾 Importovat do cloudu</button>'+
+    '</div>'+
   '</div>';
   
   document.getElementById('imp-step1').style.display='none';
@@ -3301,11 +3186,11 @@ function renderAnalysisReport(result){
   document.getElementById('imp-report').innerHTML=html;
 }
 
-// === Uložení ===
+// === Uložení do Firestore ===
 async function impConfirmAndSave(){
   var result=impState.analysis;
-  if(!result)return;
-  var o=OBJ[result.objIdx];
+  if(!result||!result.rows)return;
+  var o=OBJ[impState.objIdx];
   if(!o){alert('Objekt nenalezen.');return;}
   var btn=document.getElementById('imp-do');
   btn.disabled=true;btn.textContent='⟳ Ukládání...';
@@ -3313,47 +3198,35 @@ async function impConfirmAndSave(){
   
   try{
     if(!o.tenants)o.tenants={el:{},heat:{},cool:{},gas:{},water:{}};
-    var totalValues=0, totalNegatives=0, mediaSet=new Set();
+    var savedValues=0;
     var alarmsToCreate=[];
+    var mediaSet=new Set();
     
-    result.sections.forEach(function(s){
-      if(s.skip)return;
-      if(!o.tenants[s.medium])o.tenants[s.medium]={};
-      mediaSet.add(s.medium);
-      Object.keys(s.yearResults).forEach(function(yearStr){
-        var year=parseInt(yearStr);
-        var yr=s.yearResults[year];
-        var dKey=year===2025?'d25':'d26';
-        Object.keys(yr.data).forEach(function(t){
-          if(!o.tenants[s.medium][t])o.tenants[s.medium][t]={d25:Array(12).fill(0),d26:Array(12).fill(0)};
-          if(!o.tenants[s.medium][t].d25)o.tenants[s.medium][t].d25=Array(12).fill(0);
-          if(!o.tenants[s.medium][t].d26)o.tenants[s.medium][t].d26=Array(12).fill(0);
-          // Pouze 2026 a 2025 ukládáme (nemáme schéma pro ostatní roky)
-          if(year===2025||year===2026){
-            Object.keys(yr.data[t]).forEach(function(mi){
-              o.tenants[s.medium][t][dKey][parseInt(mi)]=yr.data[t][mi];
-              totalValues++;
-            });
-          }
-        });
-        // Sběr alarmů ze záporných hodnot
-        (yr.negatives||[]).forEach(function(n){
-          totalNegatives++;
-          if(year===2026){ // jen alarmy pro 2026 (aktuální rok)
-            alarmsToCreate.push({
-              objId:o.id,medium:s.medium,month:n.month,tenant:n.tenant,
-              value:n.value,year:year
-            });
-          }
-        });
+    result.rows.forEach(function(row){
+      var med=row.medium, t=row.tenant, year=row.year;
+      mediaSet.add(med);
+      if(!o.tenants[med])o.tenants[med]={};
+      if(!o.tenants[med][t])o.tenants[med][t]={d25:Array(12).fill(0),d26:Array(12).fill(0)};
+      if(!o.tenants[med][t].d25)o.tenants[med][t].d25=Array(12).fill(0);
+      if(!o.tenants[med][t].d26)o.tenants[med][t].d26=Array(12).fill(0);
+      var dKey=year===2025?'d25':'d26';
+      Object.keys(row.values).forEach(function(mi){
+        o.tenants[med][t][dKey][parseInt(mi)]=row.values[mi];
+        savedValues++;
       });
+      // Záporné hodnoty - alarm pro 2026
+      if(year===2026&&row.negatives.length>0){
+        row.negatives.forEach(function(mi){
+          alarmsToCreate.push({objId:o.id,medium:med,month:mi,tenant:t,value:row.values[mi]});
+        });
+      }
     });
     
     o.pos=new Date().toLocaleDateString('cs-CZ',{month:'2-digit',year:'numeric'}).replace(' ','/');
     o.st='ok';
     await fbDB.collection('objects').doc(o.id).set(deepClean(o));
     
-    // Vytvořit alarmy pro záporné hodnoty
+    // Alarmy pro záporné hodnoty
     var alarmsCreated=0;
     for(var i=0;i<alarmsToCreate.length;i++){
       var a=alarmsToCreate[i];
@@ -3375,19 +3248,18 @@ async function impConfirmAndSave(){
     // Log
     await saveImportLogEntry({
       objectId:o.id,objectName:o.n,fileName:impState.file.name,
-      rowsCount:totalValues,status:totalNegatives>0?'warn':'ok',
-      message:'Importováno '+Array.from(mediaSet).length+' médií, '+totalValues+' hodnot'+(totalNegatives>0?', '+totalNegatives+' záporných hodnot':'')
+      rowsCount:savedValues,status:alarmsCreated>0?'warn':'ok',
+      message:'Naimportováno '+Array.from(mediaSet).length+' médií, '+savedValues+' hodnot'+(alarmsCreated>0?', '+alarmsCreated+' alarmů':'')
     });
     
-    // Success
-    var savedObjIdx=result.objIdx;
+    var savedObjIdx=impState.objIdx;
     document.getElementById('imp-report').innerHTML=
       '<div style="text-align:center;padding:40px 20px">'+
         '<div style="font-size:60px;color:var(--green);margin-bottom:14px">✓</div>'+
         '<div style="font-size:18px;font-weight:700;color:var(--navy);margin-bottom:6px">Import dokončen</div>'+
-        '<div style="font-size:13px;color:var(--gd);margin-bottom:4px">Uloženo <b>'+totalValues+' hodnot</b> ve <b>'+mediaSet.size+' médiích</b> do objektu <b>'+o.n+'</b></div>'+
+        '<div style="font-size:13px;color:var(--gd);margin-bottom:4px">Uloženo <b>'+savedValues+' hodnot</b> ve <b>'+mediaSet.size+' médiích</b> do objektu <b>'+o.n+'</b></div>'+
         (alarmsCreated>0?'<div style="font-size:12px;color:#c0392b;margin-top:8px">⚠ Vytvořeno '+alarmsCreated+' alarmů pro záporné hodnoty</div>':'')+
-        '<div style="margin-top:22px;display:flex;gap:8px;justify-content:center">'+
+        '<div style="margin-top:22px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'+
           '<button class="btn-o" onclick="impClearFile();showSec(\'import\')">Importovat další</button>'+
           (alarmsCreated>0?'<button class="btn-o" onclick="impClearFile();showSec(\'alarmy\')" style="border-color:#c0392b;color:#c0392b">⚠ Zobrazit alarmy</button>':'')+
           '<button class="btn-p" onclick="impClearFile();openDetail('+savedObjIdx+')">Zobrazit objekt</button>'+
@@ -3397,11 +3269,10 @@ async function impConfirmAndSave(){
     console.error('Import save failed:',e);
     setSyncStatus('error');
     alert('Uložení selhalo: '+e.message);
-    btn.disabled=false;btn.textContent='💾 Importovat vše do cloudu';
+    btn.disabled=false;btn.textContent='💾 Importovat do cloudu';
   }
 }
 
-// === Spuštění analýzy (handler pro tlačítko Analyzovat soubor) ===
 function impStartAnalysis(){
   var sel=document.getElementById('imp-objekt');
   var objIdx=sel?parseInt(sel.value):0;
@@ -3412,16 +3283,23 @@ function impStartAnalysis(){
   impState.objIdx=objIdx;
   var btn=document.getElementById('btn-submit');
   btn.disabled=true;
-  btn.innerHTML='<span class="spin">⟳</span> Analyzuji soubor...';
+  btn.innerHTML='<span class="spin">⟳</span> Analyzuji šablonu...';
   
   var reader=new FileReader();
   reader.onload=function(e){
     setTimeout(function(){
       try{
         var data=new Uint8Array(e.target.result);
-        impState.workbook=XLSX.read(data,{type:'array',cellDates:true});
-        impState.analysis=runFullAnalysis(impState.workbook,objIdx);
-        renderAnalysisReport(impState.analysis);
+        impState.workbook=XLSX.read(data,{type:'array',cellDates:false});
+        var parsed=parseTemplate(impState.workbook);
+        if(!parsed.ok){
+          var statusDiv=document.getElementById('import-status');
+          statusDiv.style.display='block';
+          statusDiv.innerHTML='<div class="wiz-err"><b>⚠ Šablona nelze přečíst:</b><br>'+parsed.error+'<br><br>Stáhněte si prosím <a href="#" onclick="downloadTemplate();return false" style="color:var(--teal);font-weight:600">prázdnou šablonu</a> a vyplňte ji.</div>';
+        } else {
+          impState.analysis=parsed;
+          renderAnalysisReport(parsed);
+        }
       }catch(err){
         console.error(err);
         alert('Chyba: '+err.message);
@@ -3431,6 +3309,68 @@ function impStartAnalysis(){
     },50);
   };
   reader.readAsArrayBuffer(impState.file);
+}
+
+// === Stáhnout prázdnou šablonu ===
+function downloadTemplate(){
+  if(typeof XLSX==='undefined'){alert('Knihovna SheetJS se nenačetla.');return;}
+  var wb=XLSX.utils.book_new();
+  // List 1: Spotřeby
+  var data=[
+    ['Nájemce','Médium','Rok','Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'],
+    ['BB','el',2026,12500,11800,12100,'','','','','','','','',''],
+    ['BB','water',2026,145.5,138.2,142.1,'','','','','','','','',''],
+    ['BB','heat',2026,32.5,28.4,18.2,'','','','','','','','',''],
+    ['IF','el',2026,8200,8450,8120,'','','','','','','','',''],
+    ['Deloitte','el',2026,25400,24800,23900,'','','','','','','','',''],
+  ];
+  var ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=[{wch:22},{wch:12},{wch:9}].concat(Array(12).fill({wch:11}));
+  XLSX.utils.book_append_sheet(wb,ws,'Spotřeby');
+  
+  // List 2: Návod
+  var navod=[
+    ['FM Spotřeby – Standardní šablona importu'],
+    ['Verze 1.0 · Rilancio s.r.o.'],
+    [],
+    ['▌ K čemu šablona slouží'],
+    ['Jednotný formát pro nahrávání měsíčních spotřeb energií do aplikace FM Spotřeby.'],
+    ['Vyplňte list "Spotřeby" a nahrajte do aplikace přes sekci IMPORT.'],
+    [],
+    ['▌ Význam sloupců'],
+    ['Nájemce','Krátký kód nebo název nájemce (např. "BB", "Deloitte"). Stejný kód pro všechny řádky téhož nájemce.'],
+    ['Médium','Typ energie. Povolené hodnoty: el / heat / cool / gas / water'],
+    ['Rok','Rok dat. Aplikace podporuje 2025 a 2026.'],
+    ['Leden – Prosinec','Měsíční spotřeba. Prázdné = nemáme data.'],
+    [],
+    ['▌ Kódy médií (přesně tyto!)'],
+    ['Kód','Médium','Jednotka'],
+    ['el','Elektřina','kWh'],
+    ['heat','Teplo','GJ'],
+    ['cool','Chlazení','GJ'],
+    ['gas','Plyn','m³'],
+    ['water','Voda','m³'],
+    [],
+    ['▌ Postup vyplnění'],
+    ['1. Otevřete list "Spotřeby"'],
+    ['2. Smažte vzorové řádky 2-6'],
+    ['3. Pro každého nájemce + médium + rok přidejte 1 řádek'],
+    ['4. Vyplňte měsíční hodnoty (jen ty které máte)'],
+    ['5. Uložte soubor'],
+    ['6. V aplikaci FM Spotřeby → IMPORT → nahrajte soubor'],
+    [],
+    ['▌ Pomocník: převod z jiných formátů'],
+    ['Pokud máte report od dodavatele v jiném formátu (Churchill, Masaryčka, ...):'],
+    ['1. Nahrajte ten soubor do chatu s Claude (já)'],
+    ['2. Napište: "Převed tento report do šablony FM Spotřeby Rilancio pro objekt X, měsíc Y"'],
+    ['3. Claude vám pošle převedený soubor připravený k importu'],
+  ];
+  var ws2=XLSX.utils.aoa_to_sheet(navod);
+  ws2['!cols']=[{wch:30},{wch:90}];
+  XLSX.utils.book_append_sheet(wb,ws2,'Návod');
+  
+  // Trigger download
+  XLSX.writeFile(wb,'Rilancio_FM_template.xlsx');
 }
 
 // Wire up handlers
